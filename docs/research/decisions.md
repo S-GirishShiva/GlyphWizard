@@ -27,3 +27,4 @@
 | D23 | 2026-10-11 | Every new concept in specs/plans gets a short "Learning aside" (plain explanation + 1–3 quality resources) | User learning goal |
 | D24 | 2026-10-11 | v1 definition of done + M0–M6 order approved (triggers M4 before agent M5) | `2026-10-11-v1-roadmap-draft.md` |
 | D25 | 2026-10-11 | Image/GIF → glyph import in v1 (M2): system photo picker, crop/fit to circle, luminance → area-average downscale, levels (brightness/contrast/gamma/threshold/invert), live preview, output = raster clip; animated GIF/WebP → frames. Deterministic app feature; agent may call it later with params | User; Nothing OS custom-icon precedent (user confirmed it works on 4a Pro) |
+| D26 | 2026-10-11 | Releases always include the SDK-free build; full (SDK) APK published only after Nothing grants written permission. Email to GDKsupport@nothing.tech runs in parallel (draft in docs/outreach/) | Review r2 HIGH-1 |
