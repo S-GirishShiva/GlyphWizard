@@ -185,10 +185,10 @@ That is 12 names (`list_examples`/`get_example` are one capability). Final count
 
 ## 8. UX
 
-- **Apply directly + undo** [UX] **[E for trend]**. The turn card (**[P]**, [TES] synthesis) has two states in v1:
+- **Apply directly + undo** [UX] **[E for trend]**. The turn card (**[P]**, [TES] synthesis) has three states:
   - **Undo** while the turn is still the latest change.
+  - **Undo this turn** if later user edits didn't touch the same paths (JSON-Patch `test` guards on `touchedPaths`; property-tested in `:core`) [D36].
   - **Restore to before this turn…** otherwise. Applied as a new forward group; nothing is lost.
-  - Selective "Undo this turn" (JSON-Patch `test` guards on `touchedPaths`) is post-v1 [review r2 overengineering].
   - The transcript is never truncated. Press-and-hold shows before/after.
 - **References:** selection chip; `@`-mention clips by auto-name.
 - **Stop:** keeps finished operations. Messages typed during a turn queue as the next turn.
