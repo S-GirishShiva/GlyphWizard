@@ -19,3 +19,6 @@ local.properties
 
 # Kotlin
 .kotlin/
+
+# Superpowers visual companion scratch
+.superpowers/
