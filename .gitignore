@@ -1,0 +1,21 @@
+*.iml
+.gradle
+/local.properties
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Android Studio: keep only shareable project settings
+/.idea/*
+!/.idea/codeStyles/
+!/.idea/inspectionProfiles/
+!/.idea/runConfigurations.xml
+
+# Nothing Glyph SDK binary: never commit (EULA, D18)
+*.aar
+
+# Kotlin
+.kotlin/
