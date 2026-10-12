@@ -5,9 +5,10 @@
 ## Where we are
 The design phase is complete pending user review of the spec. The brainstorming flow (superpowers) reached "write the design doc", so the next steps are:
 1. **User reviews the spec.** If changes are requested, edit the spec and re-run the self-review.
-2. **On approval:** invoke `superpowers:writing-plans` for **M0 only** ("Foundations & hardware spike"). Plans for M1–M8 are written just in time, after the previous milestone, because each one depends on the last one's results (e.g. M0 measurements).
+2. **Spec approved 2026-10-12.** Invoke `superpowers:writing-plans` for **M0 only** ("Foundations & hardware spike"). Plans for M1–M8 are written just in time, after the previous milestone, because each one depends on the last one's results (e.g. M0 measurements).
 
 ## Read these first (in order)
+0. `CLAUDE.md` (auto-loaded) and `docs/engineering/code-guidelines.md`
 1. `docs/superpowers/specs/2026-10-12-glyphwizard-v1-design.md`: **the source of truth**
 2. `docs/design/frontend-guidelines.md`: UI code rules (`:designsystem`, R1–R14)
 3. `docs/research/decisions.md`: D1–D44
@@ -32,3 +33,6 @@ The design phase is complete pending user review of the spec. The brainstorming 
 - Phone (4a) Pro on USB, Android 16 / API 36. `android` CLI, adb, scrcpy and mobile-mcp are installed.
 - Non-interactive shells don't load `~/.zshrc`: use `$HOME/Android/Sdk/platform-tools/adb` if adb versions mismatch.
 - Visual companion: superpowers brainstorming `scripts/start-server.sh --project-dir <repo>`. Mockups live in `.superpowers/` (gitignored).
+
+## Architecture
+Module level is final. The internal architecture deep-dive comes before M1 (D46).
