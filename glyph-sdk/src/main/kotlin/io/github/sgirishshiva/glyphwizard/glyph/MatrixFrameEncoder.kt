@@ -1,0 +1,47 @@
+package io.github.sgirishshiva.glyphwizard.glyph
+
+import io.github.sgirishshiva.glyphwizard.core.DeviceProfile
+
+/** Turns LED-ordered brightness into the int array the device expects. */
+class MatrixFrameEncoder(
+    val profile: DeviceProfile,
+    val layout: Layout,
+    val maxValue: Int,
+) {
+    enum class Layout {
+        /** One value per LED, in LED order. */
+        LedsOnly,
+
+        /** One value per grid cell, row-major, with 0 outside the LED mask. */
+        FullSquare,
+    }
+
+    private val squareIndices: IntArray = profile.ledPositions().map { (x, y) -> y * profile.gridSize + x }.toIntArray()
+
+    fun encode(brightness: IntArray): IntArray {
+        require(brightness.size == profile.ledCount) { "expected ${profile.ledCount} values, got ${brightness.size}" }
+        val scaled = IntArray(brightness.size) { brightness[it].coerceIn(0, MAX_INPUT) * maxValue / MAX_INPUT }
+        return when (layout) {
+            Layout.LedsOnly -> {
+                scaled
+            }
+
+            Layout.FullSquare -> {
+                IntArray(profile.gridSize * profile.gridSize).also { square ->
+                    squareIndices.forEachIndexed { led, cell -> square[cell] = scaled[led] }
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val MAX_INPUT = 255
+
+        /**
+         * Provisional until the M0 hardware spike: the SDK sizes this device's matrix 13 × 13
+         * (`Glyph.DEVICE_25111p_MATRIX_LENGTH`) and caps values at 255 (its README).
+         */
+        fun forPhone4aPro(): MatrixFrameEncoder =
+            MatrixFrameEncoder(DeviceProfile.Phone4aPro, Layout.FullSquare, MAX_INPUT)
+    }
+}

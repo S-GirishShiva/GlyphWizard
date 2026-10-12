@@ -1,6 +1,9 @@
 config:
   validation: true
 
+# Rules that skip test code by default get our flavour/build-type test source sets added to their (otherwise
+# unchanged) default excludes: testFull, testSdkFree, testDebug, testRelease.
+
 coroutines:
   GlobalCoroutineUsage:
     active: true
@@ -18,6 +21,7 @@ coroutines:
 
 potential-bugs:
   UnsafeCallOnNullableType:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
     active: true
   MapGetWithNotNullAssertionOperator:
     active: true
@@ -28,11 +32,12 @@ potential-bugs:
   DoubleMutabilityForCollection:
     active: true
   LateinitUsage:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
     active: true
-    excludes: ['**/test/**', '**/testSdkFree/**', '**/testFull/**', '**/androidTest/**']
 
 naming:
   FunctionNaming:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
     # Composables are PascalCase by Compose convention
     ignoreAnnotated: ['Composable']
 
@@ -102,3 +107,35 @@ style:
     active: true
   RangeUntilInsteadOfRangeTo:
     active: true
+  MagicNumber:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/*.kts', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+
+comments:
+  KDocReferencesNonPublicProperty:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  UndocumentedPublicClass:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  UndocumentedPublicFunction:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  UndocumentedPublicProperty:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+
+complexity:
+  StringLiteralDuplication:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  TooManyFunctions:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+
+exceptions:
+  InstanceOfCheckForException:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  ThrowingExceptionsWithoutMessageOrCause:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  TooGenericExceptionCaught:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+
+performance:
+  ForEachOnRange:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  SpreadOperator:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']

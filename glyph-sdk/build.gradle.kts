@@ -38,7 +38,8 @@ detekt {
 ktlint { version = libs.versions.ktlint.get() }
 kover {
     reports {
-        filters { excludes { classes("*.SdkMatrixService") } } // thin SDK adapter, needs a real device
+        // thin SDK adapter that needs a real device; `$*` also covers its compiler-generated inner classes
+        filters { excludes { classes("*.SdkMatrixService", "*.SdkMatrixService$*") } }
         variant("sdkFreeDebug") { verify { rule { minBound(80) } } }
         variant("fullDebug") { verify { rule { minBound(80) } } }
     }
@@ -47,6 +48,7 @@ kover {
 dependencies {
     api(project(":core"))
     "fullImplementation"(libs.glyph.matrix.sdk) { artifact { type = "aar" } }
+    "fullImplementation"(libs.coroutines.core)
 
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
