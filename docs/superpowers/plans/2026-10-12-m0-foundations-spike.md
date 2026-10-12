@@ -68,7 +68,9 @@
 3. **Glyph service missing** (non-Nothing phone, binding never answers, `register` false, a `GlyphException`): `connect()`/`show()` return `Err` within the timeout. No hang, no crash. *Owner: Task 4 `NothingGlyphDisplayTest` (fake `MatrixService`, virtual time).*
 4. **Frame length 137 vs 169**, plus any transform: the encoder handles both layouts, and the default comes from measurement. *Owner: Task 4 `MatrixFrameEncoderTest`; Task 6 Step 9 default test.*
 5. **Leaving or killing the app mid-pattern:** `stop()` cancels the loop and releases the matrix; a force-stop is recorded as a [HW] fact. *Owner: Task 5 `GlyphSessionTest`; Task 6 Step 8.*
-6. **adb hooks reachable:** a DUMP-guarded receiver accepts shell broadcasts. *Owner: Task 5 Step 6 manual check (one broadcast → one `GlyphMirror` line).*
+6. **adb hooks reachable:** a DUMP-guarded receiver accepts shell broadcasts. *Owner: Task 5 Step 7 manual check (one broadcast → one `GlyphMirror` line), `SpikeCommandTest`.*
+7. **Measuring with the screen off or the app backgrounded:** the session and receiver live in the `specialUse` `SpikePatternService`, not the Activity. *Owner: Task 5 Step 4; Task 6 Step 7.*
+8. **detekt alpha silently stops enforcing:** the canary must report `UnsafeCallOnNullableType`, `GlobalCoroutineUsage` and `ForbiddenMethodCall`, and `run-detekt.sh` must tell findings from crashes. *Owner: Task 2 Step 7 `scripts/detekt-canary.sh`.*
 
 ## File structure (end of M0)
 ```
@@ -97,7 +99,8 @@ glyph-sdk/
   src/full/AndroidManifest.xml                       ENABLE permission
   src/test/  src/testSdkFree/  src/testFull/
 app/    GlyphWizardApplication.kt  AppContainer.kt  MainActivity.kt + Robolectric tests
-spike/  SpikeActivity.kt  GlyphSession.kt  Patterns.kt  SpikeReceiver.kt  SpikeListener.kt  SpikeShortService.kt + tests
+spike/  Patterns.kt  GlyphSession.kt  SpikeCommand.kt  SpikePatternService.kt (specialUse FGS + DUMP-guarded receiver)
+        SpikeActivity.kt  SpikeListener.kt  SpikeShortService.kt + tests
 .github/workflows/ci.yml
 docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/engineering/licences.md  docs/learning/m0.md
 ```
@@ -818,54 +821,140 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
   ```
   Slug: `m0-glyph-bridge`.
 
-### Task 5: Spike app (throwaway): patterns, session, listener, adb hooks
+### Task 5: Spike app (throwaway): patterns, session, pattern service, listener, adb hooks
 
 **Files:** `spike/src/main/kotlin/io/github/sgirishshiva/glyphwizard/spike/`:
 - `Patterns.kt`
 - `GlyphSession.kt`
+- `SpikeCommand.kt`
+- `SpikePatternService.kt`
 - `SpikeActivity.kt`
-- `SpikeReceiver.kt`
 - `SpikeListener.kt`
 - `SpikeShortService.kt`
 
-Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`.
+Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Catalog: add `lifecycle-service` (`androidx.lifecycle:lifecycle-service`, same version as `lifecycle-runtime-ktx`).
+
+**Design decision (review r2 N17):** patterns run in **`SpikePatternService`, a `specialUse` foreground service**, not in the Activity. The Activity stops on screen-off, so an Activity-owned session and receiver could not serve the locked, pocketed and background measurements (Task 6 Steps 7–8). The service owns the session and the DUMP-guarded receiver for its whole life; it runs until `STOP`. Whether the Nothing service keeps showing an app matrix while the app has no visible Activity is itself recorded as a §10 fact (Task 6 Step 7). `SpikeShortService` is kept only for the §10 `shortService` interplay probe.
 
 **Interfaces:**
-- **Consumes:** `GlyphDisplays.create`, `MatrixFrameEncoder`, `MirroringGlyphDisplay`, `DeviceProfile.Phone4aPro`.
-- **Produces these adb hooks** for Task 6, where `P=io.github.sgirishshiva.glyphwizard.spike`:
+- **Consumes:** `GlyphDisplays.create`, `MatrixFrameEncoder`, `MirroringGlyphDisplay`, `DeviceProfile.Phone4aPro`, `GlyphDisplay.setAutoTimeout`.
+- **Produces these adb hooks** for Task 6, where `P=io.github.sgirishshiva.glyphwizard.spike` (the service must be running; start it from the Activity's "Start" button):
   - `$ADB shell am broadcast -p $P -a $P.SHOW --es pattern <name> [--ei level N] [--ei hz N] [--ei x N] [--ei y N] [--ei fps N] [--es layout leds|square] [--ei max 255|2047]`
-  - `$ADB shell am broadcast -p $P -a $P.DUMP` logs the last frame under the tag `GlyphMirror`
-  - `$ADB shell am broadcast -p $P -a $P.SHORT` starts the 60 s `shortService`
+  - `$ADB shell am broadcast -p $P -a $P.TIMEOUT --ez enabled true|false` calls `setAutoTimeout`
+  - `$ADB shell am broadcast -p $P -a $P.DUMP` logs the last frame under `GlyphMirror`, and `lastResult` + `achievedFps` under `SpikeStatus`
+  - `$ADB shell am broadcast -p $P -a $P.STOP` stops the session and the service
+  - `$ADB shell am broadcast -p $P -a $P.SHORT` starts `SpikeShortService` (fire it while the Activity is visible: a background app may not start a foreground service)
 
-- [ ] **Step 0: Discover.** Read Task 4's `GlyphDisplay` and `MirroringGlyphDisplay`, research §3.1, and Android docs on `NotificationListenerService` and `shortService` (`android docs search "shortService foreground service type"`). Each file starts with the single allowed header comment: `// Throwaway M0 spike (spec §8). Deleted at end of M1.`
-- [ ] **Step 1: `Patterns`.** Pure functions of type `(DeviceProfile, elapsedMs: Long) -> IntArray`, each returning `ledCount` values:
+- [ ] **Step 0: Discover.** Read Task 4's `GlyphDisplay` and `MirroringGlyphDisplay`, research §3.1, and Android docs on `NotificationListenerService`, foreground service types and `specialUse` (`android docs search "foreground service types specialUse"`, `android docs search "shortService foreground service type"`). Each file starts with the single allowed header comment: `// Throwaway M0 spike (spec §8). Deleted at end of M1.`
+- [ ] **Step 1: `Patterns`.** `typealias Pattern = (DeviceProfile, elapsedMs: Long) -> IntArray`. Pure functions, each returning `ledCount` values:
   - `checker`
   - `all(level)`
   - `ramp`: 8 bands across x
-  - `rowsSweep`: row = `(elapsedMs / framePeriod) % 13`; the period is passed in
+  - `rowsSweep(framePeriodMs)`: row = `(elapsedMs / framePeriodMs) % 13`
   - `single(x, y)`
   - `flash(hz)`: on when `(elapsedMs * hz * 2 / 1000) % 2 == 0L`
   - `cornerProbe`: first and last LED of each row
-- [ ] **Step 2: `GlyphSession(display, scope, dispatcher, clock: () -> Long)`.**
-  - `start(pattern, fps)` cancels any running loop, then launches a new loop on `dispatcher` that calls `display.show(pattern(profile, clock() - t0))` every `1000/fps` ms. It updates `achievedFps: StateFlow<Double>` and `lastResult: StateFlow<GlyphResult<Unit>?>`.
-  - `stop()` cancels the loop, then calls `display.release()`.
-- [ ] **Step 3: `SpikeActivity` (Compose).**
-  - **Controls:** pattern buttons; an fps slider (5–120); layout and max toggles; a status line showing `lastResult` and `achievedFps`; a "grant notification access" button that opens `Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS`.
-  - **Lifecycle:** `onStart` connects and starts; `onStop` calls `session.stop()`.
-  - **Display:** wrapped in `MirroringGlyphDisplay` with a `GlyphMirror` log sink.
-- [ ] **Step 4: `SpikeReceiver`.** Registered in `onStart` via `ContextCompat.registerReceiver(this, receiver, filter, Manifest.permission.DUMP, null, ContextCompat.RECEIVER_EXPORTED)`. Only callers holding DUMP (the adb shell) can reach it; it's unregistered in `onStop`.
-- [ ] **Step 5: `SpikeListener : NotificationListenerService` and `SpikeShortService`.**
-  - **`SpikeListener`:** declared in the manifest with `BIND_NOTIFICATION_LISTENER_SERVICE`. It logs `onListenerConnected`, `onListenerDisconnected` and `onNotificationPosted` with `SystemClock.elapsedRealtime()` under the tag `SpikeListener`.
-  - **`SpikeShortService`:** `foregroundServiceType="shortService"`; posts its notification, sleeps 60 s, logs `onTimeout`, then stops.
-- [ ] **Step 6: Manual check (Review Focus 6).**
+- [ ] **Step 2: `GlyphSession`** (review r2 N16: `profile` injected, `kotlin.time` source injected, absolute deadlines):
+  ```kotlin
+  class GlyphSession(
+      private val display: GlyphDisplay,
+      private val profile: DeviceProfile,
+      private val scope: CoroutineScope,
+      private val dispatcher: CoroutineDispatcher,
+      private val timeSource: TimeSource.WithComparableMarks,
+  ) {
+      private val _achievedFps = MutableStateFlow(0.0)
+      val achievedFps: StateFlow<Double> = _achievedFps.asStateFlow()
+      private val _lastResult = MutableStateFlow<GlyphResult<Unit>?>(null)
+      val lastResult: StateFlow<GlyphResult<Unit>?> = _lastResult.asStateFlow()
+      private var loop: Job? = null
+
+      fun start(pattern: Pattern, fps: Int) {
+          require(fps in 1..240) { "fps must be in 1..240, got $fps" }
+          loop?.cancel()
+          loop = scope.launch(dispatcher) {
+              val period = 1.seconds / fps
+              val t0 = timeSource.markNow()
+              var frames = 0L
+              while (isActive) {
+                  delay((t0 + period * frames.toDouble()) - timeSource.markNow())   // absolute deadline: no drift
+                  _lastResult.value = display.show(pattern(profile, t0.elapsedNow().inWholeMilliseconds))
+                  frames++
+                  val elapsed = t0.elapsedNow()
+                  if (elapsed.isPositive()) _achievedFps.value = frames / elapsed.toDouble(DurationUnit.SECONDS)
+              }
+          }
+      }
+
+      fun stop() {
+          loop?.cancel()
+          loop = null
+          display.release()
+      }
+  }
+  ```
+  `start`/`stop` are called on the main thread only (service callbacks), so `loop` needs no synchronisation.
+- [ ] **Step 3: `SpikeCommand`.** One parser shared by the Activity and the receiver, so both paths behave the same:
+  ```kotlin
+  sealed interface SpikeCommand {
+      data class Show(val pattern: String, val fps: Int, val layout: MatrixFrameEncoder.Layout, val maxValue: Int, val level: Int, val hz: Int, val x: Int, val y: Int) : SpikeCommand
+      data class AutoTimeout(val enabled: Boolean) : SpikeCommand
+      data object Dump : SpikeCommand
+      data object Stop : SpikeCommand
+      data object Short : SpikeCommand
+      companion object { fun from(action: String?, extras: Bundle?): SpikeCommand? }
+  }
+  ```
+  Defaults for missing extras: `fps = 30`, `layout = FullSquare`, `maxValue = 255`, `level = 255`, `hz = 10`, `x = 6`, `y = 6`. An unknown action or pattern name returns `null` (logged under `SpikeStatus`, ignored). `fun patternFor(show: Show): Pattern?` maps the name to Step 1.
+- [ ] **Step 4: `SpikePatternService : LifecycleService`** (`specialUse` FGS).
+  - `onCreate`: `startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)`; register `SpikeReceiver` (an inner `BroadcastReceiver` that parses with `SpikeCommand.from` and calls `handle`) via `ContextCompat.registerReceiver(this, receiver, filter, Manifest.permission.DUMP, null, ContextCompat.RECEIVER_EXPORTED)`. Only callers holding DUMP (the adb shell) can reach it.
+  - `onStartCommand`: the Activity's commands arrive as intents → `SpikeCommand.from(intent.action, intent.extras)` → `handle`.
+  - `handle(Show)`: if `(layout, maxValue)` differs from the current session's, `stop()` it and build a new one: `MirroringGlyphDisplay(GlyphDisplays.create(this, MatrixFrameEncoder(profile, layout, maxValue)), profile) { Log.i("GlyphMirror", it) }`, `connect()` in `lifecycleScope`, then `session.start(pattern, fps)`. `Stop` → `session.stop()`, `stopSelf()`. `Dump` → logs. `AutoTimeout` → `display.setAutoTimeout`. `Short` → `startForegroundService(Intent(this, SpikeShortService::class.java))`.
+  - Wiring lives in a small `SpikeContainer(context, dispatcher: CoroutineDispatcher = Dispatchers.Default, timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic)`, the spike's composition root (default parameter values are where detekt `InjectDispatcher` allows a named dispatcher).
+  - `onDestroy`: unregister the receiver, `session.stop()`.
+- [ ] **Step 5: `SpikeActivity` (Compose).** A thin control panel: pattern buttons, an fps slider (5–120), layout and max toggles, Start/Stop, "grant notification access" (opens `Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS`) and "allow notifications" (requests `POST_NOTIFICATIONS`). Every button sends its `SpikeCommand` as an intent through `ContextCompat.startForegroundService`. Status is read from `DUMP` logs, not shown in the UI (throwaway).
+- [ ] **Step 6: `SpikeListener` and `SpikeShortService`.**
+  - **`SpikeListener : NotificationListenerService`** logs `onListenerConnected`, `onListenerDisconnected` and `onNotificationPosted` with `SystemClock.elapsedRealtime()` under `SpikeListener`.
+  - **`SpikeShortService : LifecycleService`** (review r2 N8): `onStartCommand` calls `startForeground(2, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SHORT_SERVICE)` and launches a heartbeat in `lifecycleScope` (`while (isActive) { Log.i("SpikeShort", "alive ${SystemClock.elapsedRealtime()}"); delay(10.seconds) }`). It does **not** stop itself: it runs until the system calls `onTimeout(startId, fgsType)` (API 35+, about 3 minutes), which logs the time and calls `stopSelf(startId)`. No `Thread.sleep`.
+  - **Manifest** (`spike/src/main/AndroidManifest.xml`), in full:
+  ```xml
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <service
+      android:name=".SpikePatternService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+          android:value="Debug-only hardware measurement of the Glyph Matrix" />
+  </service>
+  <service
+      android:name=".SpikeShortService"
+      android:exported="false"
+      android:foregroundServiceType="shortService" />
+  <service
+      android:name=".SpikeListener"
+      android:exported="true"
+      android:label="GlyphWizard spike"
+      android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+          <action android:name="android.service.notification.NotificationListenerService" />
+      </intent-filter>
+  </service>
+  ```
+  `shortService` needs no type-specific permission. `POST_NOTIFICATIONS` is a runtime permission on target 36: grant it with the Activity button or `$ADB shell pm grant $P android.permission.POST_NOTIFICATIONS`. Without it the services still run; only their notifications are hidden.
+- [ ] **Step 7: Manual check (Review Focus 6).**
   ```bash
   ./gradlew :spike:installFullDebug && $ADB shell am start -n io.github.sgirishshiva.glyphwizard.spike/.SpikeActivity
   ```
-  Then:
+  Then tap Start, and:
   1. `$ADB shell am broadcast -p … -a ….SHOW --es pattern checker` → flip the phone: a checkerboard.
-  2. `….DUMP` → `$ADB logcat -d -s GlyphMirror:V` shows one 13-line grid.
-  3. Press Home → the matrix turns off within about 1 s.
-- [ ] **Step 7: Tests (after).**
+  2. `….DUMP` → `$ADB logcat -d -s GlyphMirror:V SpikeStatus:V` shows one 13-line grid and one status line.
+  3. Press Home → record whether the matrix keeps playing (input to Task 6 Step 7).
+  4. `….STOP` → the matrix turns off within about 1 s and the notification disappears.
+- [ ] **Step 8: Tests (after).**
   - **`PatternsTest`:**
     - every pattern returns 137 values within 0..255
     - `checker` alternates between LED-order neighbours in the same row
@@ -873,18 +962,23 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`.
     - `flash(10)` is on/off/on at elapsedMs 0 / 50 / 100, and on at 49
     - `cornerProbe` lights exactly 26 LEDs
     - `single(6,6)` lights exactly one LED
-  - **`GlyphSessionTest`** (`runTest`, fake `GlyphDisplay`, `StandardTestDispatcher`, virtual clock):
-    - `start(…, 50)` → about 50 `show` calls per virtual second
+  - **`GlyphSessionTest`** (`runTest`, fake `GlyphDisplay`, `StandardTestDispatcher(testScheduler)`, `testScheduler.timeSource`, `backgroundScope`):
+    - `start(…, 50)` → 50 ± 1 `show` calls per virtual second, and `achievedFps` within 1 of 50
+    - `start(…, 120)` → 120 ± 1 calls per virtual second (no drift from the 8.33 ms period)
     - `stop()` → no further `show` calls, and `release` is called once
     - a second `start` cancels the first loop
     - an `Err` from `show` lands in `lastResult`
+    - `fps = 0` throws
+  - **`SpikeCommandTest`** (Robolectric for `Bundle`): each action parses with its defaults; every extra overrides its default; an unknown action or pattern → `null`.
   - **Lint/detekt exemptions (only if the user agreed in Task 1):** `:spike` uses `lint { disable += "HardcodedText" }` and a detekt `excludes` entry. Otherwise, apply the full rules.
-- [ ] **Step 8: Learning asides:**
-  - the Activity lifecycle (`onStart`/`onStop`) and `lifecycleScope`
+- [ ] **Step 9: Learning asides:**
+  - the Activity lifecycle (`onStart`/`onStop`) vs a foreground service's lifetime, and why measurements need the service
+  - `LifecycleService` and `lifecycleScope` (an owned scope, like a `context.Context` cancelled on shutdown)
   - BroadcastReceivers: exported vs non-exported vs permission-guarded
   - `NotificationListenerService`
-  - foreground service types, and `shortService`
-- [ ] **Step 9: Commit.** Slug: `m0-spike`.
+  - foreground service types: `specialUse` vs `shortService`, and the background-start restriction
+  - `kotlin.time.TimeSource` and absolute-deadline scheduling (like a Go `time.Ticker` vs repeated `time.Sleep`)
+- [ ] **Step 10: Commit.** Slug: `m0-spike`.
 
 ### Task 6: Hardware measurements (human + agent) → results doc
 
@@ -903,17 +997,18 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`.
   - PWM visible in slow motion?
   - Glow: `single(6,6)` at 255, photographed for halo bleed into neighbouring cells.
   - Pitch: centre-to-centre distance across 13 LEDs, divided by 12.
-- [ ] **Step 6: Auto-timeout.** Call `setGlyphMatrixTimeout(true/false)` (add a spike toggle; it goes through `SdkMatrixService` as a spike-only extension). Does the app matrix auto-clear?
-- [ ] **Step 7: Priority and states.** While `all(128)` plays:
+- [ ] **Step 6: Auto-timeout.** While `all(128)` plays, send `$P.TIMEOUT --ez enabled true`, then `false` (`GlyphDisplay.setAutoTimeout` → `SdkMatrixService` → `setGlyphMatrixTimeout`). Does the app matrix auto-clear, and after how long?
+- [ ] **Step 7: Priority and states.** Patterns run from `SpikePatternService` (Task 5), so they survive the Activity stopping. While `all(128)` plays:
   1. Receive a WhatsApp message from a contact with a Nothing Essential Notification → which wins?
-  2. Repeat locked, face-down, face-up and pocketed.
-  3. Repeat with an AOD Glyph Toy enabled.
-  4. Find and record the **exact settings path** for Nothing's per-app Glyph notification setting.
+  2. Press Home (no visible Activity, service still foreground) → does the app matrix keep showing? Record it: "app matrix requires a visible Activity" is itself a §10 fact. `DUMP` confirms the session is still running.
+  3. Repeat 1 locked, face-down, face-up and pocketed (hooks keep working: the receiver lives in the service).
+  4. Repeat with an AOD Glyph Toy enabled.
+  5. Find and record the **exact settings path** for Nothing's per-app Glyph notification setting.
 - [ ] **Step 8: Kill and process.**
   1. `$ADB shell am force-stop io.github.sgirishshiva.glyphwizard.spike` while `all(255)` plays → does the panel clear? (Review Focus 5 [HW].)
   2. Grant notification access, background the app, then run `$ADB shell dumpsys activity processes | grep -A3 spike` → record the state (cached? frozen?).
   3. `$ADB shell am crash io.github.sgirishshiva.glyphwizard.spike` → time the rebind from the `SpikeListener` logs, with and without `requestRebind`.
-  4. Fire `SHORT` while the listener is bound → record the process state, `onTimeout`, and any ANR.
+  4. With the listener bound and the Activity visible, fire `SHORT`, then press Home. Over about 4 minutes, record the `SpikeShort` heartbeats, the `onTimeout` time, the process state (`dumpsys activity processes`) and any ANR.
   5. Record anything not reproducible as such.
 - [ ] **Step 9: Restricted settings via Obtainium** (D26-safe).
   1. **Ask the user** before tagging or pushing.
