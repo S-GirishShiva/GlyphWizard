@@ -75,6 +75,9 @@
 .editorconfig  renovate.json  LICENSE  NOTICE  README.md
 settings.gradle.kts  build.gradle.kts  gradle/libs.versions.toml  gradle/verification-metadata.xml
 config/detekt/detekt.yml
+build-logic/  settings.gradle.kts  build.gradle.kts
+  src/main/kotlin/.../buildlogic/FetchGlyphSdk.kt    pinned, hash-checked SDK download task
+  src/main/kotlin/.../buildlogic/GlyphSdkFetchPlugin.kt  plugin glyphwizard.glyph-sdk-fetch (task + glyphSdkAar + glyphSdk configuration)
 detekt-canary/src/main/kotlin/Canary.kt            known violations detekt MUST report (D47)
 scripts/check-glyph-sdk-fetch.sh  scripts/guard-banned.sh  scripts/check-sdkfree-apk.sh  scripts/detekt-canary.sh
 core/   DeviceProfile.kt (provisional)  TextGrid.kt (provisional, text-grid codec) + tests
@@ -82,7 +85,7 @@ agent/  AgentModule.kt (placeholder entry: `object AgentModule { const val NAME 
 evals/  Main.kt (prints usage) + test
 designsystem/  GlyphTheme.kt (minimal, empty token set) + Robolectric test
 glyph-sdk/
-  build.gradle.kts                                   FetchGlyphSdk task + flavours
+  build.gradle.kts                                   flavours; applies glyphwizard.glyph-sdk-fetch; fullCompileOnly SDK
   src/main/kotlin/.../glyph/GlyphDisplay.kt          GlyphDisplay, GlyphResult, GlyphError
   src/main/kotlin/.../glyph/MatrixFrameEncoder.kt
   src/main/kotlin/.../glyph/MirroringGlyphDisplay.kt
@@ -329,9 +332,9 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 
 ### Task 3: Glyph SDK fetch (full only, pinned, configuration-cache safe)
 
-**Files:** Modify `glyph-sdk/build.gradle.kts`, `gradle/libs.versions.toml` (`glyphSdkUrl`, `glyphSdkSha256`); create `scripts/check-glyph-sdk-fetch.sh`.
+**Files:** Modify `settings.gradle.kts`, `glyph-sdk/build.gradle.kts`, `app/build.gradle.kts`, `spike/build.gradle.kts`, `gradle/libs.versions.toml` (`glyphSdkUrl`, `glyphSdkSha256`); create `build-logic/` (`settings.gradle.kts`, `build.gradle.kts`, `FetchGlyphSdk.kt`, `GlyphSdkFetchPlugin.kt`) and `scripts/check-glyph-sdk-fetch.sh`.
 
-**Interfaces (produces):** task `:glyph-sdk:fetchGlyphSdk`; the `full` variants depend on its output through `builtBy`.
+**Interfaces (produces):** plugin `glyphwizard.glyph-sdk-fetch`; task `:glyph-sdk:fetchGlyphSdk`; extension `glyphSdkAar: FileCollection` (built by the task); consumable configuration `:glyph-sdk` → `glyphSdk`. `:glyph-sdk` compiles against the SDK only in `full`; `:app`/`:spike` package it in `full`.
 
 - [ ] **Step 0: Discover.** Read `glyph-sdk/build.gradle.kts` from Task 2 and the Gradle docs on lazy properties and configuration cache (`android docs search "Gradle lazy configuration"` or docs.gradle.org). Then confirm the pin:
   ```bash
@@ -339,8 +342,29 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   curl -fsSL -o "$SCRATCH/g.aar" "https://raw.githubusercontent.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/a65d8e1d13e796919894e54ce43f93d939cdb34c/glyph-matrix-sdk-2.0.aar" && sha256sum "$SCRATCH/g.aar"
   ```
   Expect `be00ee9c…bf29`. Write `glyphSdkUrl` and `glyphSdkSha256` into `[versions]`.
-- [ ] **Step 1: Implement**, in `glyph-sdk/build.gradle.kts`:
+- [ ] **Step 1: Implement** the fetch as a plugin in the included build `build-logic/` (review r2 N2: a task class declared inside a `build.gradle.kts` compiles as an inner class of the script, which Gradle can't instantiate or configuration-cache).
+  - `settings.gradle.kts` (root): add `pluginManagement { includeBuild("build-logic") }` above the existing `pluginManagement` content (merge into the same block).
+  - `build-logic/settings.gradle.kts`:
   ```kotlin
+  dependencyResolutionManagement { repositories { mavenCentral(); gradlePluginPortal() } }
+  rootProject.name = "build-logic"
+  ```
+  - `build-logic/build.gradle.kts`:
+  ```kotlin
+  plugins { `kotlin-dsl` }
+  gradlePlugin {
+      plugins {
+          register("glyphSdkFetch") {
+              id = "glyphwizard.glyph-sdk-fetch"
+              implementationClass = "io.github.sgirishshiva.glyphwizard.buildlogic.GlyphSdkFetchPlugin"
+          }
+      }
+  }
+  ```
+  - `build-logic/src/main/kotlin/io/github/sgirishshiva/glyphwizard/buildlogic/FetchGlyphSdk.kt`:
+  ```kotlin
+  package io.github.sgirishshiva.glyphwizard.buildlogic
+
   abstract class FetchGlyphSdk : DefaultTask() {
       @get:Input abstract val url: Property<String>
       @get:Input abstract val sha256: Property<String>
@@ -350,11 +374,11 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
       @TaskAction
       fun fetch() {
           val target = aar.get().asFile
-          if (target.exists() && target.sha256() == sha256.get()) return
+          if (target.exists() && sha256Of(target.readBytes()) == sha256.get()) return
           if (offline.get()) throw GradleException(downloadError())
           val bytes = runCatching { URI(url.get()).toURL().openStream().use { it.readBytes() } }
               .getOrElse { throw GradleException(downloadError(), it) }
-          val actual = bytes.sha256()
+          val actual = sha256Of(bytes)
           if (actual != sha256.get()) {
               target.delete()
               throw GradleException("Glyph SDK SHA-256 mismatch: expected ${sha256.get()}, got $actual. URL: ${url.get()}")
@@ -363,22 +387,57 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
           target.writeBytes(bytes)
       }
 
+      private fun sha256Of(bytes: ByteArray): String =
+          HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
+
       private fun downloadError() =
           "Could not download the Glyph SDK from ${url.get()} (needed for the 'full' flavour; build 'sdkFree' to skip)."
   }
-
-  private fun ByteArray.sha256(): String = MessageDigest.getInstance("SHA-256").digest(this).toHexString()
-  private fun File.sha256(): String = readBytes().sha256()
-
-  val fetchGlyphSdk = tasks.register<FetchGlyphSdk>("fetchGlyphSdk") {
-      url = providers.gradleProperty("glyphSdk.url").orElse(libs.versions.glyphSdkUrl)
-      sha256 = providers.gradleProperty("glyphSdk.sha256").orElse(libs.versions.glyphSdkSha256)
-      offline = gradle.startParameter.isOffline
-      aar = layout.projectDirectory.file("libs/glyph-matrix-sdk.aar")
-  }
-  dependencies { "fullImplementation"(files(fetchGlyphSdk.flatMap { it.aar }).builtBy(fetchGlyphSdk)) }
   ```
+  - `build-logic/src/main/kotlin/io/github/sgirishshiva/glyphwizard/buildlogic/GlyphSdkFetchPlugin.kt`:
+  ```kotlin
+  package io.github.sgirishshiva.glyphwizard.buildlogic
+
+  class GlyphSdkFetchPlugin : Plugin<Project> {
+      override fun apply(project: Project) {
+          val fetch = project.tasks.register<FetchGlyphSdk>("fetchGlyphSdk") {
+              url = project.providers.gradleProperty("glyphSdk.url")
+              sha256 = project.providers.gradleProperty("glyphSdk.sha256")
+              offline = project.gradle.startParameter.isOffline
+              aar = project.layout.projectDirectory.file("libs/glyph-matrix-sdk.aar")
+          }
+          val aarFile = fetch.flatMap { it.aar }
+          project.extensions.add(FileCollection::class.java, "glyphSdkAar", project.files(aarFile).builtBy(fetch))
+          val consumable = project.configurations.consumable(GLYPH_SDK_CONFIGURATION)
+          project.artifacts.add(consumable.name, aarFile)
+      }
+
+      companion object {
+          const val GLYPH_SDK_CONFIGURATION = "glyphSdk"
+      }
+  }
+  ```
+  - `glyph-sdk/build.gradle.kts`: add `id("glyphwizard.glyph-sdk-fetch")` to `plugins {}`, then
+  ```kotlin
+  dependencies {
+      "fullCompileOnly"(glyphSdkAar)
+      "testFullImplementation"(glyphSdkAar)
+  }
+  ```
+  The plugin only exposes the file; the `full*` configurations are wired in the module script because AGP creates them only once the `productFlavors` block has run.
+  In `app/build.gradle.kts` and `spike/build.gradle.kts`:
+  ```kotlin
+  dependencies { "fullRuntimeOnly"(project(":glyph-sdk", configuration = "glyphSdk")) }
+  ```
+  Why this shape (review r2 N1):
+  - AGP refuses a direct local `.aar` dependency when it builds an AAR (`bundleFullDebugAar` fails with *"Direct local .aar file dependencies are not supported when building an AAR"*). So the library only **compiles against** the SDK (`fullCompileOnly`); its unit tests get it on their runtime classpath (`testFullImplementation`, because loading the full `GlyphDisplays` pulls in `SdkMatrixService`).
+  - The applications package it (`fullRuntimeOnly`). They reach the file through the `glyphSdk` consumable configuration, whose artifact carries the fetch task dependency, instead of reaching into `project(":glyph-sdk").tasks` (keeps projects isolated).
+  - [verify] that AGP accepts the raw AAR from a project configuration: `./gradlew :app:assembleFullDebug && unzip -l app/build/outputs/apk/full/debug/app-full-debug.apk | grep -c classes` and the Task 7 positive control (`Lcom/nothing/ketchum/` in the full dex). If AGP rejects it, fall back to `"fullRuntimeOnly"(files(isolated.rootProject.projectDirectory.file("glyph-sdk/libs/glyph-matrix-sdk.aar")))` plus `tasks.named("preFullDebugBuild") { dependsOn(":glyph-sdk:fetchGlyphSdk") }`, and record the reason.
+
   Notes:
+  - Imports for the two `build-logic` files: `org.gradle.api.{DefaultTask, GradleException, Plugin, Project}`, `org.gradle.api.file.{FileCollection, RegularFileProperty}`, `org.gradle.api.provider.Property`, `org.gradle.api.tasks.{Input, OutputFile, TaskAction}`, `org.gradle.kotlin.dsl.register`, `java.net.URI`, `java.security.MessageDigest`, `java.util.HexFormat`.
+  - The SHA helper is a private **member** and uses `java.util.HexFormat` (JDK 17, no opt-in). `ByteArray.toHexString()` is avoided because `build-logic` compiles with Gradle's embedded Kotlin, where it may still be `@ExperimentalStdlibApi`.
+  - `build-logic` is outside the module set, so ktlint/detekt don't scan it; it's build tooling, reviewed by hand.
   - `runCatching` is fine here: this is not suspend code.
   - A local file whose hash doesn't match is re-downloaded and re-verified. The remote is the trust boundary, and the pinned hash guards it.
   - `.gitignore` already ignores `*.aar`; also add `glyph-sdk/libs/`.
@@ -403,9 +462,12 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   test ! -e glyph-sdk/libs || fail "sdkFree triggered fetch"
   echo OK
   ```
-  Run it and expect `OK`. Also run `./gradlew :glyph-sdk:assembleFullDebug` twice and confirm the second run reports the fetch task `UP-TO-DATE` (configuration-cache compatible).
+  Run it and expect `OK`. Then:
+  - `./gradlew :app:assembleFullDebug` twice: the second run reports `:glyph-sdk:fetchGlyphSdk UP-TO-DATE`.
+  - `./gradlew --configuration-cache :glyph-sdk:fetchGlyphSdk` twice: the second run prints `Reusing configuration cache.` and neither run reports a configuration-cache problem.
 - [ ] **Step 3: Learning asides:**
   - Gradle tasks with lazy `Property`/`Provider` and `builtBy`, the wiring that runs on demand
+  - `compileOnly` vs `implementation` vs `runtimeOnly` (like a Go build tag that compiles against an interface but links the implementation elsewhere), and why a library must not bundle a local AAR
   - SHA pinning: why a commit-pinned URL plus a hash makes builds reproducible
 - [ ] **Step 4: Commit.** Slug: `m0-sdk-fetch`.
 
