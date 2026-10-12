@@ -73,6 +73,7 @@ On a Nothing Phone (4a) Pro (Android 16):
 :agent      pure Kotlin/JVM  agent loop, provider adapters (Ktor), stream parser, tool registry
                              + tier filter, context assembly, epochs/compaction, probe,
                              spend accounting, traces
+:designsystem Android        single source of all UI tokens + Gw* components + previews (§6.5)
 :glyph-sdk  Android          Nothing SDK bridge behind an interface; absent in `sdkFree`
 :app        Android          Compose UI, manual DI container, storage, Keystore,
                              foreground service, NotificationListener + trigger runtime,
@@ -97,7 +98,7 @@ On a Nothing Phone (4a) Pro (Android 16):
 | Build | Gradle KTS + version catalog; JDK 17 toolchain |
 | Tests | JUnit 5 + kotlin.test + golden text-grid files on the JVM; Robolectric + Compose UI tests in `:app`; Roborazzi screenshots; fakes over mocks |
 | CI | GitHub Actions; signed tag → GitHub Release |
-| Lint | ktlint + Android Lint |
+| Lint | ktlint + Android Lint + compose-rules + custom design-system checks (R1–R14) |
 | Licence | GPL-3.0-or-later + an additional permission for the Nothing SDK, plus a NOTICE (decided in M0) |
 
 ---
@@ -386,6 +387,9 @@ The **atlas** is the visual spec, and **flow.md** is the navigation. Key behavio
 - **just-in-time** notification access, the restricted-settings walkthrough, and the Nothing tip (path to be verified [HW])
 
 **Settings:** per UI31, plus data & backup and about (with the not-affiliated disclaimer).
+
+### 6.5 Front-end code quality (D44)
+All tokens (colour, type, spacing, shape, glass, motion, haptics, icons) and all `Gw*` components live in **`:designsystem`**. Feature code may use only those. The rules R1–R14 are enforced by Lint/detekt/compose-rules and review: no raw colours or dp, strings in resources, stateless hoisted composables, UDF, immutable state, previews plus a screenshot test per component, semantics built in, motion and haptics via tokens. Full guidelines: **`docs/design/frontend-guidelines.md`**.
 
 ### 6.4 Copy rules
 - Sentence case, plain verbs.
