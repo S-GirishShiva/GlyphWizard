@@ -7,7 +7,9 @@
 
 **One more small revision (rev 4), then execute.** Every r2 finding (N1–N17, L1–L6) is closed as specified; I found no regressions. Three new HIGHs would each fail a build or a test, or let a quality gate pass vacuously. All three have mechanical fixes. No round 4 review is needed, just a spot check of the edited lines.
 
-**Counts (new):** 0 CRITICAL · 3 HIGH · 6 MEDIUM · 6 LOW.
+**Counts (new):** 0 CRITICAL · 3 HIGH · 9 MEDIUM · 8 LOW. (R-M7–R-M9 and R-L7–R-L8 were added after reading `docs/engineering/*`, `docs/design/flow.md` and `docs/research/decisions.md` in full; `flow.md` has nothing in M0 scope.)
+
+**User direction (2026-10-12):** use modern Java (25–27), not 17. The "JDK 17" in the plan traces to `2026-10-11-app-foundations-research.md` (lines 402 and 420), which read AGP's *minimum* JDK as the project target. A research subagent is establishing the bytecode/toolchain ceilings: `:core`/`:agent` bytecode ships to ART, so its target is capped by D8 and the device's Java APIs, not by the host JDK. This supersedes R-H1's "bytecode target 17" wording.
 **r2 closure:** 23 / 23 CLOSED.
 
 ---
@@ -98,14 +100,38 @@
 
 #### R-M6. `@OptIn` in tests vs the `ForbiddenAnnotation: kotlin.OptIn` ban
 - **The conflict:** detekt's plain task scans test sources too. The config already excludes test paths for `LateinitUsage`, but not for `ForbiddenAnnotation`. `GlyphSessionTest` uses `testScheduler.timeSource`, which may be `@ExperimentalCoroutinesApi` in the pinned `kotlinx-coroutines-test` [verify with the pinned source]. If it is, the test needs `@OptIn`, and the `detekt` job fails.
-- **Fix:** decide in the plan. Either:
-  - (a) exclude test source sets from `ForbiddenAnnotation`, because test-only opt-ins carry no production risk; or
-  - (b) keep the ban and log a decision entry (D5x) for `ExperimentalCoroutinesApi` in tests.
+- **Fix:** decide in the plan. `modern-kotlin-patterns.md` §1.2 bans `@OptIn` **anywhere** without a decision entry, so silently exempting tests (a) would contradict it. Options:
+  - (a) amend §1.2 to exclude test sources, and match it in the detekt config;
+  - (b) keep the ban and log a decision entry (D5x) allowing `ExperimentalCoroutinesApi` in test sources only, suppressed per file citing D5x.
 
-  Recommend (a).
+  **This is the user's call.** Recommend (b): it keeps the rule's audit trail.
+
+#### R-M7. `GlyphSession` uses the `_x`/`x` pair the patterns doc replaced
+- **The conflict:** `modern-kotlin-patterns.md` §2.12 says that state a class writes itself uses an explicit backing field (stable in Kotlin 2.4), not the `_state`/`state` pair. §1.2 tags this "Allowed once ktlint/detekt parse it in M0 [U]", which makes M0 the place to verify it.
+- **Fix:**
+  - `val achievedFps: StateFlow<Double>` with `field = MutableStateFlow(0.0)`, and the same for `lastResult`.
+  - Task 2 Step 10 confirms that ktlint and detekt parse the form. If either fails, keep the pair, log why, and mark §1.2 accordingly.
+  - Learning aside.
+
+#### R-M8. `guard-banned.sh` covers fewer custom checks than the enforcement table
+`modern-kotlin-patterns.md` §3 assigns several bans to a custom **C** check. The script implements only `kapt` and the `object`/`var` heuristic. Missing:
+- #17: no `src/*/res/layout*` directories
+- #20: plugin/dependency bans: `kotlin-kapt`, `com.android.legacy-kapt`, `com.google.dagger`, `io.insert-koin`
+- #12: RxJava dependency ban (`io.reactivex`)
+
+**Fix:** add these three file-based checks to `guard-banned.sh`, extend its self-test, or state in the plan which are deferred and why. #25 (`else` on a sealed `when`) needs a custom detekt rule; record it as deferred to M1, with review as the backstop.
+
+#### R-M9. Task 6 amends only D6/D10/D37; D33 and D28 also depend on M0 measurements
+- **D33** (agent turn as `shortService`, "5 min total / ≤ 150 s background (P)") depends on the `shortService` timeout that Task 6 Step 8.4 measures. The plan also asserts "about 3 minutes" as a fact without a source (see research item 10).
+- **D28** (single process; listener self-rebind) depends on Task 6 Step 8.2–8.3: process state, and the rebind time with and without `requestRebind`.
+- **Fix:** Task 6 Step 10 amends **D6, D10, D28, D33, D37**, and Task 8 Step 1 checks all five.
 
 ### LOW
 
+- **R-L7 (docs drift):**
+  - **D47** still says "exit codes distinguish findings vs tool crash". Since r2 N6, SARIF classification does this. Amend D47 in Task 2's commit.
+  - **`modern-kotlin-patterns.md` §1.1** (JUnit row) still says Robolectric "needs the Vintage engine", contradicting D49 as amended. Fix it in the same commit (boy-scout rule, separate docs commit).
+- **R-L8 (Task 2 Step 1):** the patterns doc pins AGP **9.4.0**, while the repo and plan use **9.4.1**. Update §1.1 when pinning.
 - **R-L1 (Task 3 Step 1):** `url = project.providers.gradleProperty(…)` relies on Kotlin's assignment plugin inside a plain `.kt` class in `build-logic`. Use `url.set(…)` (likewise for `sha256`, `offline`, `aar`), which is unambiguous in any compilation context.
 - **R-L2 (Task 3 Step 1):** annotate `FetchGlyphSdk` with `@DisableCachingByDefault(because = "downloads a pinned artifact; the output is already local")`. It's idiomatic, and `validatePlugins` warns without it.
 - **R-L3 (Task 6 Step 2 / Task 4):** the SDK README says *"Any value above 255 will be automatically capped at 255"*. Keep the `max=2047` probe as a confirmation, but cite the README in Task 6 and expect `maxValue = 255`. The README also says `setAppMatrixFrame`/`closeAppMatrix` need **system version ≥ 20250801**. Record the phone's Nothing OS/system version in Task 6 Step 0.
