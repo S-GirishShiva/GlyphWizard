@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 hits=$(mktemp)
-mapfile -t files < <(find . \( -path ./detekt-canary -o -path ./build-logic -o -path '*/build' -o -path '*/src/test*' -o -path '*/src/androidTest*' \) -prune -o -path '*/src/*' -name '*.kt' -print)
+mapfile -t files < <(find . \( -path ./detekt-canary -o -path '*/build' -o -path '*/src/test*' -o -path '*/src/androidTest*' \) -prune -o -path '*/src/*' -name '*.kt' -print)
 ((${#files[@]})) || { echo "FAIL: no sources found" >&2; exit 1; }
 grep -nHE '!!|\bGlobalScope\b|\brunBlocking\b|\bLiveData\b|\bAsyncTask\b|\bfindViewById\b|\bThread\.sleep\b' "${files[@]}" >>"$hits" || true
-mapfile -t builds < <(find . \( -path ./build-logic -o -path '*/build' \) -prune -o -name '*.gradle.kts' -print)
+mapfile -t builds < <(find . -path '*/build' -prune -o -name '*.gradle.kts' -print)
 grep -nH 'kapt' "${builds[@]}" >>"$hits" || true
 # mutable state in an `object` / `companion object` body (patterns #26); heuristic, review is the backstop
 awk '
@@ -15,7 +15,7 @@ awk '
     if (depth <= 0) inobj = 0
   }' "${files[@]}" >>"$hits"
 # #17 no XML layouts
-find . \( -path ./build-logic -o -path '*/build' \) -prune -o -type d -path '*/src/*/res/layout*' -print >>"$hits"
+find . -path '*/build' -prune -o -type d -path '*/src/*/res/layout*' -print >>"$hits"
 # #12, #20 banned plugins and dependencies (kapt is above)
 grep -nHE 'legacy-kapt|com\.google\.dagger|io\.insert-koin|io\.reactivex' "${builds[@]}" gradle/libs.versions.toml >>"$hits" || true
 if [ -s "$hits" ]; then cat "$hits" >&2; echo "FAIL: banned constructs" >&2; exit 1; fi

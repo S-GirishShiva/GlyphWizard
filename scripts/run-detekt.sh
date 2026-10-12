@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Gradle exits 1 for detekt findings and for crashes alike, so classify by the SARIF reports.
 set -euo pipefail
-find . -path ./build-logic -prune -o -path '*/build/reports/detekt' -type d -prune -exec rm -rf {} +
+find . -path '*/build/reports/detekt' -type d -prune -exec rm -rf {} +
 if ./gradlew "$@"; then echo "detekt: clean"; exit 0; fi
 mapfile -t reports < <(find . -path '*/build/reports/detekt/*.sarif' -type f)
 if ((${#reports[@]})) && grep -q '"ruleId"' "${reports[@]}"; then

@@ -13,7 +13,7 @@ Requirements: the Android SDK. Gradle provisions the JDKs it needs: the daemon r
 | Flavour | Command | Notes |
 |---|---|---|
 | `sdkFree` (default) | `./gradlew :app:assembleSdkFreeDebug` | Works offline. No Nothing SDK, so the app can't drive the matrix; everything else works. |
-| `full` | `./gradlew :app:assembleFullDebug` | Downloads the Nothing Glyph Matrix SDK at build time from a commit-pinned URL and checks its SHA-256 (needs network). The SDK is never committed, and `full` APKs are not distributed. |
+| `full` | `./gradlew :app:assembleFullDebug` | Resolves the Nothing Glyph Matrix SDK through Gradle from a commit-pinned GitHub URL, checked by dependency verification (needs network the first time). The SDK is never committed, and `full` APKs are not distributed. |
 
 ## Updating dependencies
 

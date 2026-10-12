@@ -31,6 +31,9 @@ junit = "6.1.3"
 junit4 = "4.13.2"
 # 2026-09-10, C org/robolectric/robolectric/4.17 (SDK 36 and 37)
 robolectric = "4.17"
+# Nothing Glyph Matrix SDK 2.0: commit a65d8e1 of Nothing-Developer-Programme/GlyphMatrix-Developer-Kit (latest touching
+# the AAR as of 2026-10-12); its SHA-256 is pinned in gradle/verification-metadata.xml
+glyphSdk = "a65d8e1d13e796919894e54ce43f93d939cdb34c"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -50,6 +53,7 @@ junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform
 junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
+glyph-matrix-sdk = { group = "com.nothing", name = "glyph-matrix-sdk-2.0", version.ref = "glyphSdk" }
 compose-rules-ktlint = { group = "io.nlopez.compose.rules", name = "ktlint", version.ref = "composeRules" }
 
 [plugins]

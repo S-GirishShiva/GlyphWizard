@@ -46,6 +46,7 @@ kover {
 
 dependencies {
     api(project(":core"))
+    "fullImplementation"(libs.glyph.matrix.sdk) { artifact { type = "aar" } }
 
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
