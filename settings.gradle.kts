@@ -23,4 +23,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "GlyphWizard"
-include(":app")
+include(":core", ":agent", ":evals", ":designsystem", ":glyph-sdk", ":app", ":spike")
+// deliberate detekt violations (D47 canary); only built when asked for
+if (providers.gradleProperty("withCanary").isPresent) include(":detekt-canary")

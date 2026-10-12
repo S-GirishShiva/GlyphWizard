@@ -45,7 +45,7 @@ Rule: **Stable only.** A pre-stable feature is a *candidate* and needs a logged 
 | Data-flow-based `when` exhaustiveness | Stable 2.3.0 [V] | Allowed (automatic) |
 | `kotlin.time.Instant` / `Clock` | Stable 2.3.0 [V] | **Allowed, preferred** over `java.time.Instant` in `:core` |
 | `kotlin.uuid.Uuid` | Stable 2.4.0, **except** `generateV4()`/`generateV7()` (experimental) [V] | **Allowed**; use `Uuid.random()` [U: assumed stable as it predates the generators] |
-| Explicit backing fields (`field = MutableStateFlow(...)`) | Stable 2.4.0 [V] | **Allowed** once ktlint/detekt parse it in M0 [U] |
+| Explicit backing fields (`field = MutableStateFlow(...)`) | Stable 2.4.0 [V] | **Allowed, preferred**: Kotlin 2.4.20, ktlint 1.8.0 and detekt 2.0.0-alpha.6 accept it (M0 canary, 2026-10-12) [V] |
 | Context parameters | Stable 2.4.0 (explicit context *arguments* are experimental) [V] | **Not for DI.** Constructor injection only (D45). Allowed only for scoped DSL vocabulary after review [D] |
 | Annotation use-site targets / `@all` | Stable 2.4.0 [V] | Allowed |
 | Name-based destructuring | Experimental since 2.3.20; planned Stable in 2.5.0 (only-syntax mode) [V/U] | **Candidate.** Until then avoid positional destructuring of data classes with > 2 fields |
