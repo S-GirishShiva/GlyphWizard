@@ -1,10 +1,12 @@
-# M0 — Foundations & Hardware Spike Implementation Plan (rev 3)
+# M0 — Foundations & Hardware Spike Implementation Plan (rev 4, final)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax.
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:executing-plans, **inline in the main session** (user choice, 2026-10-12). Reviews, QA and research run in subagents. Steps use checkbox (`- [ ]`) syntax.
+>
+> **Rev 4 is the last plan revision** (user, 2026-10-12). Anything found later becomes a `[verify]` resolved during execution, recorded in the task's commit, not a rev 5.
 >
 > **Project override (D45):** this project does **not** use TDD. Each task runs: **Step 0 Discover** (read the named files, then state what you reuse, refactor and touch) → implement → write comprehensive tests → run → commit. Mandatory reading: `CLAUDE.md`, `docs/engineering/code-guidelines.md`, `docs/engineering/modern-kotlin-patterns.md`.
 >
-> **Revision note:** rev 2 applied `2026-10-12-m0-plan-review.md` (C1–C2, H1–H12, M1–M19, L1–L10), plus D47 (detekt alpha + mitigations) and D48 (immutable collections). Rev 3 applies `2026-10-12-m0-plan-review-r2.md` (N1–N17, L1–L6) and D49 as amended (plain JUnit 4 on Android modules).
+> **Revision note:** rev 2 applied `2026-10-12-m0-plan-review.md` (C1–C2, H1–H12, M1–M19, L1–L10), plus D47 (detekt alpha + mitigations) and D48 (immutable collections). Rev 3 applies `2026-10-12-m0-plan-review-r2.md` (N1–N17, L1–L6) and D49 as amended (plain JUnit 4 on Android modules). Rev 4 applies `2026-10-12-m0-plan-review-r3.md` (R-H1–R-H3, R-M1–R-M9, R-L1–R-L8), the user's direction to use modern Java, and two research reports (JDK/bytecode; verification of r3 claims), summarised under "Review responses (rev 3 → rev 4)".
 
 **Goal:**
 - Turn the template into the real multi-module GlyphWizard project: identity, licence, flavours, CI, Glyph SDK bridge, and a durable debug glyph mirror.
@@ -18,20 +20,35 @@
 - **Scope:** the internal `:core` architecture is *not* designed here (D46). `DeviceProfile` and `TextGrid` are provisional.
 
 **Tech stack:**
-- Kotlin 2.4.21; AGP 9 with built-in Kotlin; Gradle 9.6 (wrapper present); JDK 17 toolchain.
+- Kotlin 2.4.21; AGP 9.4.1 with built-in Kotlin; Gradle 9.6.x (wrapper present: 9.6.0; take the newest 9.6 patch that passes the pin rule).
+- **Java: JDK 25 (LTS) everywhere we control.** See "Java versions" in Global Constraints (user direction 2026-10-12, D5x).
 - Compose, with the `org.jetbrains.kotlin.plugin.compose` plugin per Compose module.
-- JUnit 6 Jupiter on JVM modules; plain JUnit 4 + Robolectric on Android modules, no Vintage engine and no JUnit Platform (D49 as amended per review r2 N4).
-- Kover ≥ 0.9.11; ktlint (`org.jlleitschuh.gradle.ktlint`) + compose-rules; detekt `dev.detekt` 2.0.0-alpha.N pinned (D47); GitHub Actions.
+- JUnit 6 Jupiter on JVM modules; plain JUnit 4 + Robolectric 4.17 on Android modules, no Vintage engine and no JUnit Platform (D49 as amended per review r2 N4).
+- Kover 0.9.11 (not 0.9.10: it reports 0% with the configuration cache, kover #831); ktlint-gradle ≥ 14.1.0 (built-in Kotlin support, #1016; latest 14.2.0) running ktlint 1.8.0, plus compose-rules; detekt `dev.detekt` 2.0.0-alpha.6 pinned (D47); GitHub Actions.
 
 **Spec:** `docs/superpowers/specs/2026-10-12-glyphwizard-v1-design.md` (§2, §7, §8 M0, §9, §10).
 
 **Shell conventions:**
 - `ADB=$HOME/Android/Sdk/platform-tools/adb` (never bare `adb`).
+- The machine's default JDK is 27, which Gradle 9.6 cannot run ("JVM 27 and later are not yet supported"; Gradle ≥ 9.8 adds it). The daemon JVM criteria (`gradle/gradle-daemon-jvm.properties`, `toolchainVersion=25`) pick JDK 25 and take precedence over `JAVA_HOME`. If the wrapper *client* itself refuses JDK 27, export `JAVA_HOME` to a JDK 25 (Gradle's provisioned one under `~/.gradle/jdks/`) and record that in `docs/learning/m0.md`.
 - `SCRATCH=$(mktemp -d)` for downloads.
 - Read logcat with `-d` (dump), never by streaming.
 
 ## Global Constraints
-- minSdk **35**, targetSdk **36**, compileSdk **37** (DSL `compileSdk { version = release(37) }`); Java/Kotlin target **17**.
+- minSdk **35**, targetSdk **36**, compileSdk **37** (DSL `compileSdk { version = release(37) }`).
+- **Java versions** (research 2026-10-12. Why 17 existed: the foundations research read AGP's *minimum* JDK as the target):
+
+  | What | Value | Why |
+  |---|---|---|
+  | Daemon JVM (runs Gradle, AGP, kotlinc, detekt) | **25** (`gradle-daemon-jvm.properties`, unchanged) | Gradle 9.6 runs on 17–26; 25 is LTS; detekt alpha.6 is tested on 25; ktlint-gradle ≥ 14.0.1 supports 25 |
+  | JVM toolchain, every JVM module | **25** (`kotlin { jvmToolchain(25) }`) | Gradle ≥ 9.1 supports a toolchain of 25. JUnit 6 and tests run on 25 |
+  | `:core`, `:agent` (also shipped inside the APK) | toolchain 25, **API and bytecode level 17**: `compilerOptions { jvmTarget = JvmTarget.JVM_17; freeCompilerArgs.add("-Xjdk-release=17") }` + `java { targetCompatibility = JavaVersion.VERSION_17 }` | Their code runs on ART. Without `-Xjdk-release`, a call to a Java 21+ API compiles, dexes, then crashes on the phone with `NoSuchMethodError`. Google documents Java 17 as the Android 14+ API level. A canary proves the guard (Task 2 Step 9) |
+  | `:evals` (never shipped) | toolchain 25, target 25 | no device constraint |
+  | Android modules | `compileOptions` **`VERSION_25`**, `kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_25 } }`; **no toolchain** (unit tests run on the daemon JDK 25) | AGP 9.4.1's D8/R8 (9.4.24) accepts class files up to v27 and desugars records and indy. The device API is governed by minSdk + Lint `NewApi`, not by this number. **Gate (Task 2 Step 10):** R8 release assemble, a Robolectric test, `koverXmlReport` and `lint` all pass at 25; otherwise drop to 21 and record why |
+  | Robolectric | runs on JDK 25 (SDK 36 needs ≥ 21) | add the `--add-opens` set from robolectric.org "getting started" to `testOptions.unitTests.all { it.jvmArgs(…) }` only if a test fails without it [verify] |
+  | CI | `actions/setup-java` (v6, SHA-pinned), Temurin **25** | satisfies the daemon criteria without a download; foojay provisions anything else |
+
+  `-Xjdk-release` is a stable compiler option, but the patterns doc (#29) requires a decision for any `-X` flag, so it is logged in D5x together with the JDK choice.
 - **Application ID** `io.github.sgirishshiva.glyphwizard`: proposed, **confirmed in Task 1** (permanent).
 - **Namespaces:**
 
@@ -71,6 +88,8 @@
 6. **adb hooks reachable:** a DUMP-guarded receiver accepts shell broadcasts. *Owner: Task 5 Step 7 manual check (one broadcast → one `GlyphMirror` line), `SpikeCommandTest`.*
 7. **Measuring with the screen off or the app backgrounded:** the session and receiver live in the `specialUse` `SpikePatternService`, not the Activity. *Owner: Task 5 Step 4; Task 6 Step 7.*
 8. **detekt alpha silently stops enforcing:** the canary must report `UnsafeCallOnNullableType`, `GlobalCoroutineUsage` and `ForbiddenMethodCall`, and `run-detekt.sh` must tell findings from crashes. *Owner: Task 2 Step 7 `scripts/detekt-canary.sh`.*
+9. **ktlint or Kover silently checks nothing** (review r3 R-H3): ktlint-gradle < 14.1 registers no Android source-set tasks under built-in Kotlin, and Kover's verifier skips a bound when there are 0 lines (`minBound(80)` passes on nothing). *Owner: Task 2 Step 7 `scripts/check-tooling-active.sh`.*
+10. **A JDK API that Android lacks** sneaks into `:core`/`:agent`: `-Xjdk-release=17` makes it a compile error. *Owner: Task 2 Step 9 JDK-API canary.*
 
 ## File structure (end of M0)
 ```
@@ -82,7 +101,7 @@ build-logic/  settings.gradle.kts  build.gradle.kts
   src/main/kotlin/.../buildlogic/GlyphSdkFetchPlugin.kt  plugin glyphwizard.glyph-sdk-fetch (task + glyphSdkAar + glyphSdk configuration)
 detekt-canary/  build.gradle.kts  src/main/kotlin/Canary.kt   JVM module, only with -PwithCanary; violations detekt MUST report (D47)
 scripts/check-glyph-sdk-fetch.sh  scripts/guard-banned.sh  scripts/check-sdkfree-apk.sh
-scripts/run-detekt.sh  scripts/detekt-canary.sh  scripts/ci.sh  scripts/ci-tasks.txt
+scripts/run-detekt.sh  scripts/detekt-canary.sh  scripts/check-tooling-active.sh  scripts/ci.sh  scripts/ci-tasks.txt
 core/   DeviceProfile.kt (provisional)  TextGrid.kt (provisional, text-grid codec) + tests
 agent/  AgentModule.kt (placeholder entry: `object AgentModule { const val NAME = "agent" }`) + test
 evals/  Main.kt (prints usage) + test
@@ -156,7 +175,8 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 - Modify: `settings.gradle.kts`, `build.gradle.kts`, `gradle/libs.versions.toml`, `gradle.properties`, `app/build.gradle.kts`, `app/src/main/AndroidManifest.xml`, `app/src/main/res/values/themes.xml`
 - Delete: `app/src/main/res/values-night/themes.xml`, the example tests, `app/src/main/res/drawable*`, and the template's `appcompat`/`material` usages
 - Move: `app/src/main/java/com/example/glyphwizard` → `app/src/main/kotlin/io/github/sgirishshiva/glyphwizard`
-- Create: the module dirs, `.editorconfig`, `config/detekt/detekt.yml`, `detekt-canary/` (module), `scripts/guard-banned.sh`, `scripts/run-detekt.sh`, `scripts/detekt-canary.sh`, `docs/learning/m0.md`
+- Create: the module dirs, `.editorconfig`, `config/detekt/detekt.yml`, `detekt-canary/` (module), `scripts/guard-banned.sh`, `scripts/run-detekt.sh`, `scripts/detekt-canary.sh`, `scripts/check-tooling-active.sh`, `docs/learning/m0.md`
+- Modify (docs, separate commit first, boy-scout): `docs/research/decisions.md` (D47 wording: SARIF classification, not exit codes; new D5x Java versions + `-Xjdk-release`), `docs/engineering/modern-kotlin-patterns.md` §1.1 (AGP 9.4.1; JUnit row: no Vintage per D49; JDK row), `docs/superpowers/specs/…-design.md` §2 Build row ("JDK 17 toolchain" → "JDK 25; see D5x") (review r3 R-L7, R-L8)
 
 **Interfaces (produces):**
 - module paths `:core :agent :evals :designsystem :glyph-sdk :app :spike`
@@ -167,28 +187,31 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 
 - [ ] **Step 0: Discover.**
   - **Read:** `build.gradle.kts`, `app/build.gradle.kts`, `gradle/libs.versions.toml`, `gradle.properties` (configuration cache on), `gradle/gradle-daemon-jvm.properties`.
-  - **Note:** AGP 9.4.1 and the new `compileSdk { version = release(37) }` DSL. Keep that DSL.
+  - **First command:** `./gradlew --version`. It must show the daemon on JDK 25 (see Shell conventions if the client refuses JDK 27).
+  - **Note:** AGP 9.4.1 and the new `compileSdk { version = release(37) }` DSL. Keep that DSL. **Keep** the template's `buildTypes.release { optimization { enable = true; packageScope = … } }` block (R8 on; spec §9 tests the minified release, and `check-sdkfree-apk.sh` inspects it). Change the template's `targetSdk = 37` to 36 (D31) (review r3 R-L4).
+  - **AGP 9 default:** `android.onlyEnableUnitTestForTheTestedBuildType=true`, so release unit-test tasks don't exist. Add `android.onlyEnableUnitTestForTheTestedBuildType=false` to `gradle.properties`, because `:app:testSdkFreeReleaseUnitTest` proves the release has no mirror (Task 4). [verify] that 9.4.1 still accepts the flag: `./gradlew :app:tasks --all > "$SCRATCH/t.txt"; grep -c testSdkFreeReleaseUnitTest "$SCRATCH/t.txt"` ≥ 1. If not, drop the `testRelease` test, record it, and rely on `check-sdkfree-apk.sh` + review for the release wiring. Only `:app` runs release unit tests in CI; Compose rule tests elsewhere run in debug, where `ui-test-manifest` is present.
   - **Docs to read:** `android docs search "AGP 9 built-in Kotlin"` and `android docs search "Compose compiler Gradle plugin"`.
   - **State:** what you reuse (the plugin block and the repositories).
-- [ ] **Step 1: Pin versions** (stable only, at least 14 days old). For each row, take the newest version in Maven `<versions>` with no `-alpha|-beta|-rc|-M|-dev` suffix whose upload date on search.maven.org / maven.google.com / plugins.gradle.org is at least 14 days old. Record the source URL and date in a comment above each entry. **Exceptions:** detekt `dev.detekt` 2.0.0-alpha.N (D47) and `kotlinx-collections-immutable` (D48, not used in M0, so not pinned yet).
+- [ ] **Step 1: Pin versions** (stable only, at least 14 days old). For each row, take the newest version in Maven `<versions>` with no `-alpha|-beta|-rc|-M|-dev` suffix whose upload date on search.maven.org / maven.google.com / plugins.gradle.org is at least 14 days old. Record the source URL and date in a comment above each entry. **Exceptions:** detekt `dev.detekt` 2.0.0-alpha.6 (D47) and `kotlinx-collections-immutable` (D48, not used in M0, so not pinned yet). **Kover 0.9.11** was published 2026-09-29, so it passes the rule from 2026-10-13. If pinning earlier, log the exception in D5x: the only older candidate, 0.9.10, reports 0% under the configuration cache (#831). Log the Java choice as **D5x** now: the "Java versions" table + `-Xjdk-release=17` for `:core`/`:agent` (patterns #29 needs a decision for `-X` flags).
 
   | alias | coordinates | constraint |
   |---|---|---|
   | `agp` / `android-application`, `android-library` | `com.android.application` / `com.android.library` | keep 9.4.1 unless a newer stable passes the rule |
   | `kotlin` → `kotlin-jvm`, `kotlin-compose` | `org.jetbrains.kotlin.jvm`, `org.jetbrains.kotlin.plugin.compose` | **2.4.21** (≥ 2.2.10 required by AGP 9) |
-  | `kover` | `org.jetbrains.kotlinx.kover` | ≥ 0.9.11 (check the changelog for AGP 9 built-in Kotlin support; record it) |
-  | `detekt` | `dev.detekt` | 2.0.0-alpha.N, exact (D47) |
-  | `ktlint-gradle` | `org.jlleitschuh.gradle.ktlint` | stable |
+  | `kover` | `org.jetbrains.kotlinx.kover` | **0.9.11** (AGP 9 built-in Kotlin since 0.9.5, #787; 0.9.10 broken under CC, #831; watch #815) |
+  | `detekt` | `dev.detekt` | **2.0.0-alpha.6**, exact (D47) |
+  | `ktlint-gradle` | `org.jlleitschuh.gradle.ktlint` | stable, **≥ 14.1.0** (built-in Kotlin, #1016) |
+  | `ktlint` | `com.pinterest.ktlint` (engine, set via `ktlint { version = libs.versions.ktlint }`) | **1.8.0** (the plugin's default, 1.5.0, is stale) |
   | `compose-rules-ktlint` | `io.nlopez.compose.rules:ktlint` | stable |
   | `compose-bom` | `androidx.compose:compose-bom` | stable (verify: the pattern doc marked it [U]) |
   | `activity-compose`, `lifecycle-runtime-ktx`, `lifecycle-service` | androidx | stable (`lifecycle-*` share one version) |
   | `coroutines-core`, `coroutines-test`, `coroutines-android` | `org.jetbrains.kotlinx:kotlinx-coroutines-*` | 1.11.0 |
   | `junit-bom`, `junit-jupiter`, `junit-platform-launcher` | `org.junit:*` | JUnit **6.x** stable (D49); jupiter and launcher take no version (BOM). JVM modules only |
   | `junit4` | `junit:junit` | 4.13.2 |
-  | `robolectric` | `org.robolectric:robolectric` | stable supporting SDK 36 (record which SDK) |
-  | `compose-ui-test-junit4` | via BOM | — |
+  | `robolectric` | `org.robolectric:robolectric` | **4.17** or newer stable (SDK 36/37; needs JDK ≥ 21 for SDK 36) |
+  | `compose-ui-test-junit4`, `compose-ui-test-manifest` | via BOM | — (manifest: `debugImplementation`, needed by `createComposeRule()`; review r3 R-H2) |
   | `kotlin-test` | `org.jetbrains.kotlin:kotlin-test` | `version.ref = kotlin` |
-- [ ] **Step 2: Root `build.gradle.kts`.** Apply `false` for `android-application`, `android-library`, `kotlin-jvm`, `kotlin-compose`, `kover`, `detekt` and `ktlint-gradle`. No `subprojects {}`/`allprojects {}` (cross-project configuration breaks isolated projects; review r2 L3): every module applies `alias(libs.plugins.ktlint.gradle)` in its own `plugins {}`, and Compose modules add `ktlintRuleset(libs.compose.rules.ktlint)` to their `dependencies {}` (the type-safe accessor exists there because the plugin is applied in that script). `.editorconfig`:
+- [ ] **Step 2: Root `build.gradle.kts`.** Apply `false` for `android-application`, `android-library`, `kotlin-jvm`, `kotlin-compose`, `kover`, `detekt` and `ktlint-gradle`. No `subprojects {}`/`allprojects {}` (cross-project configuration breaks isolated projects; review r2 L3): every module applies `alias(libs.plugins.ktlint.gradle)` in its own `plugins {}` plus `ktlint { version = libs.versions.ktlint.get() }`, and Compose modules add `ktlintRuleset(libs.compose.rules.ktlint)` to their `dependencies {}` (the type-safe accessor exists there because the plugin is applied in that script). `.editorconfig`:
   ```
   root = true
   [*.{kt,kts}]
@@ -204,8 +227,9 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 - [ ] **Step 4: JVM modules** `core`, `agent`, `evals`:
   ```kotlin
   plugins { alias(libs.plugins.kotlin.jvm); alias(libs.plugins.kover); alias(libs.plugins.detekt); alias(libs.plugins.ktlint.gradle) }
-  kotlin { jvmToolchain(17) }
+  kotlin { jvmToolchain(25) }
   detekt { buildUponDefaultConfig = true }
+  ktlint { version = libs.versions.ktlint.get() }
   dependencies {
       testImplementation(platform(libs.junit.bom))
       testImplementation(libs.junit.jupiter)
@@ -215,6 +239,18 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   tasks.test { useJUnitPlatform() }
   kover { reports { verify { rule { minBound(100) } } } }   // core, agent only
   ```
+  `:core` and `:agent` also get the Android API guard (Global Constraints, Java versions):
+  ```kotlin
+  java { targetCompatibility = JavaVersion.VERSION_17 }
+  kotlin {
+      compilerOptions {
+          jvmTarget = JvmTarget.JVM_17
+          // runs on ART: only Java 17-level JDK APIs exist there (D5x)
+          freeCompilerArgs.add("-Xjdk-release=17")
+      }
+  }
+  ```
+  [verify] that Kotlin accepts `jvmTarget` together with `-Xjdk-release` with no "inconsistent JVM target" error, and that `:app:assembleSdkFreeDebug` resolves `:core` (the `org.gradle.jvm.version` attribute is 17 ≤ the consumer's). If Kotlin rejects the pair, drop the explicit `jvmTarget` (the flag implies it) and record that.
   - `agent` depends on `:core`.
   - `evals` adds the `application` plugin with `application { mainClass = "io.github.sgirishshiva.glyphwizard.evals.MainKt" }`, and `fun main() = println("glyphwizard-evals: no suites yet (M5)")`.
   - **`core`** gets `DeviceProfile` (provisional, D46):
@@ -251,11 +287,11 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
       }
       private fun glyph(value: Int): String = when (val v = value.coerceIn(0, 255)) {
           0 -> "·"
-          else -> LEVELS[((v - 1) * LEVELS.length / 255).coerceAtMost(LEVELS.lastIndex)].toString()
+          else -> LEVELS[(v - 1) * LEVELS.length / 255].toString()   // 1..255 → 0..8, never past lastIndex
       }
   }
   ```
-- [ ] **Step 5: Android modules.** `designsystem`, `glyph-sdk`, `app` and `spike` each use `alias(libs.plugins.android.library)` (or `application`) plus `kover`, `ktlint-gradle` and `detekt` (with `detekt { buildUponDefaultConfig = true }`), and Compose modules add `alias(libs.plugins.kotlin.compose)`. Set the namespace from the Global Constraints, the `compileSdk { version = release(37) }` DSL, `minSdk = 35`, `compileOptions` with Java 17, and `testOptions.unitTests.isIncludeAndroidResources = true`. Flavours, in `glyph-sdk`, `app` and `spike`:
+- [ ] **Step 5: Android modules.** `designsystem`, `glyph-sdk`, `app` and `spike` each use `alias(libs.plugins.android.library)` (or `application`) plus `kover`, `ktlint-gradle` and `detekt` (with `detekt { buildUponDefaultConfig = true }`), and Compose modules add `alias(libs.plugins.kotlin.compose)`. Set the namespace from the Global Constraints, the `compileSdk { version = release(37) }` DSL, `minSdk = 35`, `compileOptions` with `JavaVersion.VERSION_25` (source and target), `kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_25 } }`, **no toolchain** (Robolectric runs on the daemon JDK 25; review r3 R-H1), `ktlint { version = libs.versions.ktlint.get() }`, and `testOptions.unitTests.isIncludeAndroidResources = true`. The plain `detekt` task only scans `src/{main,test}/{java,kotlin}`, so flavour and build-type sets are added explicitly (the `src/<set>/kotlin` dirs that exist in the module, e.g. `detekt { source.from("src/sdkFree/kotlin", "src/full/kotlin", "src/debug/kotlin", "src/release/kotlin", "src/testSdkFree/kotlin", "src/testFull/kotlin") }`). Flavours, in `glyph-sdk`, `app` and `spike`:
   ```kotlin
   flavorDimensions += "sdk"
   productFlavors {
@@ -268,7 +304,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - `app` → `implementation(project(":core"))`, `implementation(project(":designsystem"))`, `implementation(project(":glyph-sdk"))`
   - `spike` → `implementation(project(":core"))`, `implementation(project(":glyph-sdk"))`
   - Compose: `implementation(platform(libs.compose.bom))` plus ui, material3 and `activity-compose`
-  - tests: `testImplementation(libs.junit4)`, `testImplementation(libs.robolectric)`, `testImplementation(libs.kotlin.test)`, `testImplementation(libs.compose.ui.test.junit4)` (Compose modules), `testImplementation(libs.coroutines.test)` (`:glyph-sdk`, `:spike`). AGP runs these with its JUnit 4 runner directly: no `useJUnitPlatform()`, no Vintage (JUnit 6 deprecated it), no JUnit BOM on Android modules (D49).
+  - tests: `testImplementation(libs.junit4)`, `testImplementation(libs.robolectric)`, `testImplementation(libs.kotlin.test)`, `testImplementation(libs.compose.ui.test.junit4)` + `debugImplementation(libs.compose.ui.test.manifest)` (Compose modules whose tests use `createComposeRule()`: declares the `ComponentActivity` it launches), `testImplementation(libs.coroutines.test)` (`:glyph-sdk`, `:spike`). AGP runs these with its JUnit 4 runner directly: no `useJUnitPlatform()`, no Vintage (JUnit 6 deprecated it), no JUnit BOM on Android modules (D49).
 
   Kover, per Android module:
   ```kotlin
@@ -284,7 +320,8 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
       }
   }
   ```
-  `:spike` gets no Kover rule (Task 1 answer 4). `applicationId`: `:app` = `io.github.sgirishshiva.glyphwizard`; `:spike` = `io.github.sgirishshiva.glyphwizard.spike`.
+  `:spike` gets no Kover rule (Task 1 answer 4).
+  **Known repetition:** each module repeats about 4 lines of quality wiring (plugins, `detekt {}`, `ktlint {}`, `kover {}`). A convention plugin in `build-logic/` would remove it, but it pulls AGP/KGP/detekt/ktlint onto `build-logic`'s classpath. Not in M0: it's an explicit agenda item for the D46 architecture deep-dive, so the duplication is recorded, not ignored. `applicationId`: `:app` = `io.github.sgirishshiva.glyphwizard`; `:spike` = `io.github.sgirishshiva.glyphwizard.spike`.
 - [ ] **Step 6: `:app` shell** (replaces Views; constructor DI root, D44):
   ```kotlin
   class GlyphWizardApplication : Application() {
@@ -313,7 +350,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - **Two kinds of task** (detekt docs: rules that need type resolution "will not run" without it):
     - `detekt`: plain, every module, no type resolution.
     - `detektMain`: type-resolved, on the JVM modules (`:core`, `:agent`, `:evals`, `:detekt-canary`). This is where `UnsafeCallOnNullableType` and `ForbiddenMethodCall` actually run.
-    - Android variant tasks (`detektSdkFreeDebug`, `detektDebug`) are blocked by detekt #9402 on AGP 9 built-in Kotlin [verify on the pinned alpha: `./gradlew :glyph-sdk:detektSdkFreeDebug`]. If they work, add them to the `detekt` line of `scripts/ci-tasks.txt`. Until then, `guard-banned.sh` covers the type-resolved bans on Android modules.
+    - Android variant tasks: alpha.6 registers type-resolved `detekt<Variant>` tasks under AGP ≥ 9 built-in Kotlin (`detektSdkFreeDebug`, `detektFullDebug`, `detektDebug`; verified in `DetektPlugin.kt`). They run in CI (Task 7 `detekt` line). detekt #9402 (open) means type resolution may not see generated `R`/`BuildConfig`, which causes false positives. [verify] `./gradlew :glyph-sdk:detektSdkFreeDebug :app:detektSdkFreeDebug --info > "$SCRATCH/d.txt" 2>&1; grep -ci 'compiler errors' "$SCRATCH/d.txt"`. If a variant task reports #9402 false positives, remove *that* task from `ci-tasks.txt`, record it in the commit and `decisions.md` D47, and rely on `guard-banned.sh`. Never use baselines to hide them.
   - **`config/detekt/detekt.yml`** (activates every detekt row of the `modern-kotlin-patterns.md` §3 table; `config.validation` turns a misplaced key into a crash):
   ```yaml
   config:
@@ -367,7 +404,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
           reason: 'use collectAsStateWithLifecycle (patterns #30)'
     ForbiddenImport:
       active: true
-      imports:
+      forbiddenImports:
         - value: 'androidx.lifecycle.LiveData'
           reason: 'StateFlow (patterns #11)'
         - value: 'androidx.lifecycle.MutableLiveData'
@@ -421,7 +458,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
     - `detekt-canary/build.gradle.kts`:
     ```kotlin
     plugins { alias(libs.plugins.kotlin.jvm); alias(libs.plugins.detekt) }
-    kotlin { jvmToolchain(17) }
+    kotlin { jvmToolchain(25) }
     dependencies { implementation(libs.coroutines.core) }
     detekt {
         buildUponDefaultConfig = true
@@ -497,8 +534,46 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   if [ -s "$hits" ]; then cat "$hits" >&2; echo "FAIL: banned constructs" >&2; exit 1; fi
   echo OK
   ```
-  Test it (after writing it): add a temporary `object X {\n    var n = 0\n}` and a `runBlocking {}` to `core/src/main/kotlin/…/Tmp.kt` → the script fails listing both lines; delete the file → `OK`.
+  Plus the remaining custom (**C**) rows of the patterns enforcement table (review r3 R-M8), appended before the `if [ -s "$hits" ]` line:
+  ```bash
+  # #17 no XML layouts
+  find . \( -path ./build-logic -o -path '*/build' \) -prune -o -type d -path '*/src/*/res/layout*' -print >>"$hits"
+  # #12, #20 banned plugins and dependencies (kapt is above)
+  grep -nHE 'legacy-kapt|com\.google\.dagger|io\.insert-koin|io\.reactivex' "${builds[@]}" gradle/libs.versions.toml >>"$hits" || true
+  ```
+  #25 (`else` on a sealed `when`) needs a custom detekt rule: deferred to M1, with review as the backstop.
+  Test it (after writing it), one case at a time, deleting each afterwards:
+  - a temporary `core/src/main/kotlin/…/Tmp.kt` with `object X {\n    var n = 0\n}` and a `runBlocking {}` → fails listing both lines
+  - `mkdir -p app/src/main/res/layout` → fails
+  - a `// io.reactivex` line in `core/build.gradle.kts` → fails
+  - all removed → `OK`
   - **Duplicate bans in Lint/ktlint** where the patterns doc lists equivalents (L `ObsoleteSdkInt`, the compose-rules ktlint set).
+  - **`scripts/check-tooling-active.sh`** (Review Focus 9; review r3 R-H3). ktlint and Kover have no canary module, so this proves they *see* code:
+  ```bash
+  #!/usr/bin/env bash
+  # ktlint-gradle < 14.1 registers no Android tasks under built-in Kotlin, and Kover skips a bound at 0 lines,
+  # so both can pass while checking nothing.
+  set -euo pipefail
+  fail() { echo "FAIL: $*" >&2; exit 1; }
+  out=$(mktemp -d)
+  for m in designsystem glyph-sdk app spike; do
+    ./gradlew -q ":$m:tasks" --all > "$out/$m.txt"
+    grep -q 'ktlintMainSourceSetCheck' "$out/$m.txt" || fail ":$m has no ktlint main source-set task"
+  done
+  ./gradlew -q :core:koverXmlReport :agent:koverXmlReport :designsystem:koverXmlReportDebug \
+    :glyph-sdk:koverXmlReportSdkFreeDebug :app:koverXmlReportSdkFreeDebug
+  for r in core/build/reports/kover/report.xml agent/build/reports/kover/report.xml \
+           designsystem/build/reports/kover/reportDebug.xml glyph-sdk/build/reports/kover/reportSdkFreeDebug.xml \
+           app/build/reports/kover/reportSdkFreeDebug.xml; do
+    test -f "$r" || fail "missing $r"
+    # the report-level LINE counter is the last one in the file
+    grep -o '<counter type="LINE" missed="[0-9]*" covered="[0-9]*"/>' "$r" > "$out/lines.txt" || fail "no LINE counter in $r"
+    tail -n1 "$out/lines.txt" > "$out/last.txt"
+    if grep -q 'missed="0" covered="0"' "$out/last.txt"; then fail "$r counts zero lines"; fi
+  done
+  echo OK
+  ```
+  [verify] the report file names and the ktlint task name against the pinned versions on the first run, and fix the script, not the check, if they differ. In the full-flavour CI job, also check `glyph-sdk/build/reports/kover/reportFullDebug.xml` the same way.
 - [ ] **Step 8: Learning asides** in `docs/learning/m0.md`, 2–4 sentences each plus a link:
   - Gradle modules (like Go modules / packages in one repo)
   - the version catalog
@@ -506,6 +581,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - `Application` vs `Activity` (process entry vs screen)
   - the manual DI container (like wiring in `main.go`)
   - Kover, ktlint and detekt, and why some detekt rules need type resolution (they ask the compiler what a call resolves to, like `go vet` vs `grep`)
+  - the four Java versions: daemon JVM (runs Gradle, like the interpreter running a build script), toolchain (the JDK we compile and test with, like `GOROOT`), bytecode target (the class-file format; D8 rewrites it to DEX anyway), and on-device API level (minSdk: which `java.*` classes exist on the phone, the one that crashes at runtime); why `:core` uses `-Xjdk-release=17`
 - [ ] **Step 9: Tests (after the code).**
   - **`DeviceProfileTest`:**
     - 137 LEDs
@@ -518,20 +594,24 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - **`TextGridTest`:**
     - 13 lines of 13 chars each
     - all 0 → `·` at every LED and spaces at the 32 non-LED cells
-    - bucket edges: 1→`.`, 28→`.`, 29→`:`, 255→`@`
+    - bucket edges: 1→`.`, 29→`.`, 30→`:`, 255→`@` (`(v-1)*9/255`; review r3 R-M1)
     - -5 clamps to `·` and 300 to `@`
     - a wrong size throws with the message above
   - **`:agent`:** `AgentModuleTest` asserts `NAME`.
   - **`:evals`:** `MainTest` captures stdout of `main()`.
   - **`:designsystem`:** a Robolectric `GlyphThemeTest` renders `GlyphTheme { Text("x") }` and asserts that the node exists.
   - **`:app`:** a Robolectric `MainActivityTest` (`@Config(sdk = [36])`) launches it and asserts that the app name is displayed. `AppContainerTest` asserts that `glyphDisplay` is a `GlyphDisplay` (added in Task 4).
+  - **Canaries, run once and recorded in the commit message (not kept as files):**
+    - JDK API guard (Review Focus 10): a temporary `core/src/main/kotlin/…/Tmp.kt` calling `Thread.ofVirtual()` (Java 21, no Kotlin equivalent) → `:core:compileKotlin` **fails**; delete it.
+    - Explicit backing fields (patterns §1.2 "[U] once ktlint/detekt parse it in M0"; review r3 R-M7): a temporary `core/src/main/kotlin/…/Tmp.kt` with `val s: StateFlow<Int>` + `field = MutableStateFlow(0)` (add `coroutines-core` to `:core` only for this check) → `./gradlew :core:ktlintCheck` and `bash scripts/run-detekt.sh :core:detekt :core:detektMain` are clean; delete it. Record the result in patterns §1.2 (drop the [U]). If either tool fails, Task 5 uses the `_x`/`x` pair and §1.2 records why.
 - [ ] **Step 10: Verify.**
   ```bash
   ./gradlew ktlintCheck lintSdkFreeDebug :designsystem:lintDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :app:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :app:assembleSdkFreeDebug :spike:assembleSdkFreeDebug
-  bash scripts/run-detekt.sh detekt :core:detektMain :agent:detektMain :evals:detektMain
-  bash scripts/detekt-canary.sh && bash scripts/guard-banned.sh
+  bash scripts/run-detekt.sh detekt :core:detektMain :agent:detektMain :evals:detektMain :designsystem:detektDebug :glyph-sdk:detektSdkFreeDebug :app:detektSdkFreeDebug :spike:detektSdkFreeDebug
+  bash scripts/detekt-canary.sh && bash scripts/guard-banned.sh && bash scripts/check-tooling-active.sh
+  ./gradlew :app:assembleSdkFreeRelease :app:lintSdkFreeDebug   # Java 25 gate: R8 + Lint at target 25
   ```
-  Expected: all pass.
+  Expected: all pass. **Java 25 gate:** if R8, Lint, Robolectric or Kover fails *because of* class-file version 69 (the error names the version), set the Android modules to 21, record the error in D5x, and re-run.
 - [ ] **Step 11: Install** with `$ADB install -r app/build/outputs/apk/sdkFree/debug/app-sdkFree-debug.apk`, then `$ADB shell pm list packages | grep glyphwizard` → `package:io.github.sgirishshiva.glyphwizard`.
 - [ ] **Step 12: Commit.** Slug: `m0-scaffold`.
 
@@ -562,6 +642,10 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - `build-logic/build.gradle.kts`:
   ```kotlin
   plugins { `kotlin-dsl` }
+  tasks.validatePlugins {
+      enableStricterValidation = true
+      failOnWarning = true
+  }
   gradlePlugin {
       plugins {
           register("glyphSdkFetch") {
@@ -575,6 +659,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   ```kotlin
   package io.github.sgirishshiva.glyphwizard.buildlogic
 
+  @DisableCachingByDefault(because = "downloads one pinned file; the output already lives in the project")
   abstract class FetchGlyphSdk : DefaultTask() {
       @get:Input abstract val url: Property<String>
       @get:Input abstract val sha256: Property<String>
@@ -586,8 +671,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
           val target = aar.get().asFile
           if (target.exists() && sha256Of(target.readBytes()) == sha256.get()) return
           if (offline.get()) throw GradleException(downloadError())
-          val bytes = runCatching { URI(url.get()).toURL().openStream().use { it.readBytes() } }
-              .getOrElse { throw GradleException(downloadError(), it) }
+          val bytes = runCatching { download() }.getOrElse { throw GradleException(downloadError(), it) }
           val actual = sha256Of(bytes)
           if (actual != sha256.get()) {
               target.delete()
@@ -597,11 +681,26 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
           target.writeBytes(bytes)
       }
 
+      private fun download(): ByteArray =
+          URI(url.get()).toURL().openConnection()
+              .apply {
+                  connectTimeout = CONNECT_TIMEOUT_MS
+                  readTimeout = READ_TIMEOUT_MS
+              }
+              .getInputStream()
+              .use { it.readBytes() }
+
       private fun sha256Of(bytes: ByteArray): String =
           HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes))
 
       private fun downloadError() =
           "Could not download the Glyph SDK from ${url.get()} (needed for the 'full' flavour; build 'sdkFree' to skip)."
+
+      private companion object {
+          // the JDK defaults are "OS decides" (connect) and "forever" (read): a firewalled host would hang the build
+          const val CONNECT_TIMEOUT_MS = 30_000
+          const val READ_TIMEOUT_MS = 60_000
+      }
   }
   ```
   - `build-logic/src/main/kotlin/io/github/sgirishshiva/glyphwizard/buildlogic/GlyphSdkFetchPlugin.kt`:
@@ -645,9 +744,10 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - [verify] that AGP accepts the raw AAR from a project configuration: `./gradlew :app:assembleFullDebug && unzip -l app/build/outputs/apk/full/debug/app-full-debug.apk | grep -c classes` and the Task 7 positive control (`Lcom/nothing/ketchum/` in the full dex). If AGP rejects it, fall back to `"fullRuntimeOnly"(files(isolated.rootProject.projectDirectory.file("glyph-sdk/libs/glyph-matrix-sdk.aar")))` plus `tasks.named("preFullDebugBuild") { dependsOn(":glyph-sdk:fetchGlyphSdk") }`, and record the reason.
 
   Notes:
-  - Imports for the two `build-logic` files: `org.gradle.api.{DefaultTask, GradleException, Plugin, Project}`, `org.gradle.api.file.{FileCollection, RegularFileProperty}`, `org.gradle.api.provider.Property`, `org.gradle.api.tasks.{Input, OutputFile, TaskAction}`, `org.gradle.kotlin.dsl.register`, `java.net.URI`, `java.security.MessageDigest`, `java.util.HexFormat`.
+  - Imports for the two `build-logic` files: `org.gradle.api.{DefaultTask, GradleException, Plugin, Project}`, `org.gradle.api.file.{FileCollection, RegularFileProperty}`, `org.gradle.api.provider.Property`, `org.gradle.api.tasks.{Input, OutputFile, TaskAction}`, `org.gradle.work.DisableCachingByDefault`, `org.gradle.kotlin.dsl.register`, `java.net.URI`, `java.security.MessageDigest`, `java.util.HexFormat`.
   - The SHA helper is a private **member** and uses `java.util.HexFormat` (JDK 17, no opt-in). `ByteArray.toHexString()` is avoided because `build-logic` compiles with Gradle's embedded Kotlin, where it may still be `@ExperimentalStdlibApi`.
-  - `build-logic` is outside the module set, so ktlint/detekt don't scan it; it's build tooling, reviewed by hand.
+  - `build-logic` is outside the module set, so ktlint/detekt don't scan it; it's build tooling, reviewed by hand. `validatePlugins` (strict, warnings fail) runs in CI as `:build-logic:validatePlugins` (Task 7).
+  - Lazy `=` assignment on `Property` works in `build-logic`'s plain `.kt` files: `kotlin-dsl` applies the assignment compiler plugin to every `KotlinCompile` there (verified, Gradle 9.6.1 `KotlinDslCompilerPlugins.kt`; review r3 R-L1 refuted).
   - `runCatching` is fine here: this is not suspend code.
   - A local file whose hash doesn't match is re-downloaded and re-verified. The remote is the trust boundary, and the pinned hash guards it.
   - `.gitignore` already ignores `*.aar`; also add `glyph-sdk/libs/`.
@@ -864,7 +964,7 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
     - a second `onConnected` (rebind) doesn't throw, and `connect` returned once
     - `release()` twice → one `close` and one `unbind`
     - `connect` → `release` → `connect` → `release` → two `unbind`s
-    - `close()` throwing (fake throws `IllegalStateException`) still calls `unbind`
+    - `close()` throwing (fake throws `IllegalStateException`) still calls `unbind`, **and** `release()` rethrows it (`assertFailsWith`; `try/finally` propagates by design, review r3 R-L6)
     - `connect()` twice without `release()` → `IllegalStateException`
     The fake is a plain class implementing `MatrixService`; no SDK type is constructed in tests.
   - **`:app`, `AppContainerTest`** (Robolectric): in `src/testDebug`, `glyphDisplay` is a `MirroringGlyphDisplay`; in `src/testRelease`, it is **not** (run by `:app:testSdkFreeReleaseUnitTest`).
@@ -921,10 +1021,10 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
       private val dispatcher: CoroutineDispatcher,
       private val timeSource: TimeSource.WithComparableMarks,
   ) {
-      private val _achievedFps = MutableStateFlow(0.0)
-      val achievedFps: StateFlow<Double> = _achievedFps.asStateFlow()
-      private val _lastResult = MutableStateFlow<GlyphResult<Unit>?>(null)
-      val lastResult: StateFlow<GlyphResult<Unit>?> = _lastResult.asStateFlow()
+      val achievedFps: StateFlow<Double>
+          field = MutableStateFlow(0.0)
+      val lastResult: StateFlow<GlyphResult<Unit>?>
+          field = MutableStateFlow<GlyphResult<Unit>?>(null)
       private var loop: Job? = null
 
       fun start(pattern: Pattern, fps: Int) {
@@ -936,22 +1036,26 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
               var frames = 0L
               while (isActive) {
                   delay((t0 + period * frames.toDouble()) - timeSource.markNow())   // absolute deadline: no drift
-                  _lastResult.value = display.show(pattern(profile, t0.elapsedNow().inWholeMilliseconds))
+                  lastResult.value = display.show(pattern(profile, t0.elapsedNow().inWholeMilliseconds))
                   frames++
                   val elapsed = t0.elapsedNow()
-                  if (elapsed.isPositive()) _achievedFps.value = frames / elapsed.toDouble(DurationUnit.SECONDS)
+                  if (elapsed.isPositive()) achievedFps.value = frames / elapsed.toDouble(DurationUnit.SECONDS)
               }
           }
       }
 
       fun stop() {
-          loop?.cancel()
+          val running = loop
           loop = null
-          display.release()
+          // show() is a blocking binder call: release only after the in-flight frame finishes (review r3 R-M3)
+          scope.launch(dispatcher) {
+              running?.cancelAndJoin()
+              display.release()
+          }
       }
   }
   ```
-  `start`/`stop` are called on the main thread only (service callbacks), so `loop` needs no synchronisation.
+  `start`/`stop` are called on the main thread only (service callbacks), so `loop` needs no synchronisation. Explicit backing fields (Kotlin 2.4 stable, patterns §2.12) replace the `_x`/`x` pair, provided Task 2 Step 9's canary passed; otherwise use the pair and cite the canary result.
 - [ ] **Step 3: `SpikeCommand`.** One parser shared by the Activity and the receiver, so both paths behave the same:
   ```kotlin
   sealed interface SpikeCommand {
@@ -967,8 +1071,10 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
 - [ ] **Step 4: `SpikePatternService : LifecycleService`** (`specialUse` FGS).
   - `onCreate`: `startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)`; register `SpikeReceiver` (an inner `BroadcastReceiver` that parses with `SpikeCommand.from` and calls `handle`) via `ContextCompat.registerReceiver(this, receiver, filter, Manifest.permission.DUMP, null, ContextCompat.RECEIVER_EXPORTED)`. Only callers holding DUMP (the adb shell) can reach it.
   - `onStartCommand`: the Activity's commands arrive as intents → `SpikeCommand.from(intent.action, intent.extras)` → `handle`.
-  - `handle(Show)`: if `(layout, maxValue)` differs from the current session's, `stop()` it and build a new one: `MirroringGlyphDisplay(GlyphDisplays.create(this, MatrixFrameEncoder(profile, layout, maxValue)), profile) { Log.i("GlyphMirror", it) }`, `connect()` in `lifecycleScope`, then `session.start(pattern, fps)`. `Stop` → `session.stop()`, `stopSelf()`. `Dump` → logs. `AutoTimeout` → `display.setAutoTimeout`. `Short` → `startForegroundService(Intent(this, SpikeShortService::class.java))`.
+  - **Serialised commands** (review r3 R-M5): the receiver and `onStartCommand` only `trySend` into a `Channel<SpikeCommand>(Channel.UNLIMITED)`. One coroutine in `lifecycleScope` consumes it, so two quick `SHOW`s can never race two `connect()`s.
+  - `handle(Show)`: if `(layout, maxValue)` differs from the current session's, `stop()` it and build a new one: `MirroringGlyphDisplay(GlyphDisplays.create(this, MatrixFrameEncoder(profile, layout, maxValue)), profile) { Log.i("GlyphMirror", it) }`, then `connect()`. **Only on `Ok`** call `session.start(pattern, fps)`; on `Err`, log it under `SpikeStatus` and play nothing. `Stop` → `session.stop()`, `stopSelf()`. `Dump` → logs. `AutoTimeout` → `display.setAutoTimeout`. `Short` → `startForegroundService(Intent(this, SpikeShortService::class.java))`.
   - Wiring lives in a small `SpikeContainer(context, dispatcher: CoroutineDispatcher = Dispatchers.Default, timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic)`, the spike's composition root (default parameter values are where detekt `InjectDispatcher` allows a named dispatcher).
+  - The container also owns `appScope = CoroutineScope(SupervisorJob() + dispatcher)` (process lifetime, the patterns doc's injected `applicationScope`). `GlyphSession` receives `appScope`, **not** `lifecycleScope`: `onDestroy` cancels `lifecycleScope`, which would cancel `stop()`'s pending `release()` and leave the matrix lit.
   - `onDestroy`: unregister the receiver, `session.stop()`.
 - [ ] **Step 5: `SpikeActivity` (Compose).** A thin control panel: pattern buttons, an fps slider (5–120), layout and max toggles, Start/Stop, "grant notification access" (opens `Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS`) and "allow notifications" (requests `POST_NOTIFICATIONS`). Every button sends its `SpikeCommand` as an intent through `ContextCompat.startForegroundService`. Status is read from `DUMP` logs, not shown in the UI (throwaway).
 - [ ] **Step 6: `SpikeListener` and `SpikeShortService`.**
@@ -1012,6 +1118,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   2. `….DUMP` → `$ADB logcat -d -s GlyphMirror:V SpikeStatus:V` shows one 13-line grid and one status line.
   3. Press Home → record whether the matrix keeps playing (input to Task 6 Step 7).
   4. `….STOP` → the matrix turns off within about 1 s and the notification disappears.
+  5. On the `sdkFree` spike build: `SHOW` logs `Err(Unsupported)` under `SpikeStatus` and plays nothing.
 - [ ] **Step 8: Tests (after).**
   - **`PatternsTest`:**
     - every pattern returns 137 values within 0..255
@@ -1023,10 +1130,11 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   - **`GlyphSessionTest`** (`runTest`, fake `GlyphDisplay`, `StandardTestDispatcher(testScheduler)`, `testScheduler.timeSource`, `backgroundScope`):
     - `start(…, 50)` → 50 ± 1 `show` calls per virtual second, and `achievedFps` within 1 of 50
     - `start(…, 120)` → 120 ± 1 calls per virtual second (no drift from the 8.33 ms period)
-    - `stop()` → no further `show` calls, and `release` is called once
+    - `stop()` → no further `show` calls, and `release` is called once, **after** the last `show` (the fake records the call order)
     - a second `start` cancels the first loop
     - an `Err` from `show` lands in `lastResult`
     - `fps = 0` throws
+    - only stable `kotlinx-coroutines-test` APIs: `testScheduler.timeSource`, `testScheduler.advanceTimeBy(Duration)`, `testScheduler.runCurrent()`, `backgroundScope`. The `TestScope.*` shortcuts and `advanceTimeBy(Long)` are `@ExperimentalCoroutinesApi` in 1.11.0, so they are not used, and no `@OptIn` is needed (review r3 R-M6, verified). If one ever becomes necessary, log a decision entry first (user decision, 2026-10-12; patterns #29)
   - **`SpikeCommandTest`** (Robolectric for `Bundle`): each action parses with its defaults; every extra overrides its default; an unknown action or pattern → `null`.
   - **Lint/detekt exemptions (only if the user agreed in Task 1):** `:spike` uses `lint { disable += "HardcodedText" }` and a detekt `excludes` entry. Otherwise, apply the full rules.
 - [ ] **Step 9: Learning asides:**
@@ -1044,9 +1152,9 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
 
 **Interfaces (produces):** measured `frameLayout` + transform, `maxValue`, `brightnessCurve`, `minVisibleLevel`, panel `maxSustainedFps` (D10), flash inputs (D37), rise time, glow, pitch, auto-timeout behaviour, priority, settings path, restricted settings, listener/process facts.
 
-- [ ] **Step 0: Discover.** Read spec §10 and the Task 5 hooks. Every step records its value as `[measured YYYY-MM-DD]`. Use `$ADB logcat -d` (dump, never stream).
+- [ ] **Step 0: Discover.** Read spec §10, D6/D10/D28/D33/D37 and the Task 5 hooks. Every step records its value as `[measured YYYY-MM-DD]`. Use `$ADB logcat -d` (dump, never stream). Record the phone's Nothing OS build and Glyph system version (`$ADB shell getprop ro.build.display.id`, plus Settings → About). The SDK README says `setAppMatrixFrame`/`closeAppMatrix` need system version ≥ 20250801 (review r3 R-L3).
 - [ ] **Step 1: Layout and ordering.** `cornerProbe` with `layout=leds`, then `layout=square`. Photograph each: which lights exactly the row ends? Is there any mirror, rotation or ordering transform?
-- [ ] **Step 2: Brightness range.** `all` at 64/128/255 with `max=255`, then `max=2047`. Record the true maximum.
+- [ ] **Step 2: Brightness range.** `all` at 64/128/255 with `max=255`, then `max=2047`. Record the true maximum. The SDK README says values above 255 are capped at 255 (GlyphMatrix-Developer-Kit README), so expect `maxValue = 255`. This step confirms it on hardware.
 - [ ] **Step 3: Curve.** `all(level)` at 8, 16, 32, 64, 96, 128, 192, 255. Use a light meter, or a camera with manual exposure (fixed ISO and shutter, RAW). Record relative luminance, fit the curve, and find the minimum level visibly distinct from off.
 - [ ] **Step 4: Frame rate.** `rowsSweep` at 30/50/60/90/120 fps for 60 s. Record the app-side achieved fps **and** the panel rate, measured by filming at 240 fps slow-motion and counting distinct row steps per second. Only the panel number feeds D10.
 - [ ] **Step 5: Flash, rise, glow, pitch.**
@@ -1066,7 +1174,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   1. `$ADB shell am force-stop io.github.sgirishshiva.glyphwizard.spike` while `all(255)` plays → does the panel clear? (Review Focus 5 [HW].)
   2. Grant notification access, background the app, then run `$ADB shell dumpsys activity processes | grep -A3 spike` → record the state (cached? frozen?).
   3. `$ADB shell am crash io.github.sgirishshiva.glyphwizard.spike` → time the rebind from the `SpikeListener` logs, with and without `requestRebind`.
-  4. With the listener bound and the Activity visible, fire `SHORT`, then press Home. Over about 4 minutes, record the `SpikeShort` heartbeats, the `onTimeout` time, the process state (`dumpsys activity processes`) and any ANR.
+  4. With the listener bound and the Activity visible, fire `SHORT`, then press Home. Over about 4 minutes, record the `SpikeShort` heartbeats, the `onTimeout` time, the process state (`dumpsys activity processes`) and any ANR. Documented: about 3 min from `startForeground` (AOSP `DEFAULT_SHORT_FGS_TIMEOUT_DURATION`), with an ANR if the service doesn't stop after `onTimeout`. This measurement feeds **D33** (agent turn as `shortService`, "5 min total / ≤ 150 s background (P)").
   5. Record anything not reproducible as such.
 - [ ] **Step 9: Restricted settings via Obtainium** (D26-safe).
   1. **Ask the user** before tagging or pushing.
@@ -1078,7 +1186,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   - Fill `hardware-spike-results.md`: one table per step, with photos referenced.
   - Set `MatrixFrameEncoder.forPhone4aPro()` to the measured layout and max. If a transform is needed, add it to `MatrixFrameEncoder` with tests.
   - Update `MatrixFrameEncoderTest` for the defaults.
-  - Amend D6/D10/D37 in `decisions.md`, and tag each spec §10 bullet `[measured YYYY-MM-DD → hardware-spike-results.md#…]`.
+  - Amend **D6, D10, D28** (process state, listener rebind time; Step 8.2–8.3), **D33** (shortService timing; Step 8.4) and **D37** in `decisions.md` (review r3 R-M9), and tag each spec §10 bullet `[measured YYYY-MM-DD → hardware-spike-results.md#…]`.
   - If `connect()` needed `<queries>`, record that.
 - [ ] **Step 11: Commit.** Slug: `m0-measurements`.
 
@@ -1134,19 +1242,20 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   - **`scripts/ci-tasks.txt`:**
   ```
   # <job>: <gradle args>. Read by scripts/ci.sh (CI jobs, README, verification metadata).
-  checks: ktlintCheck lintSdkFreeDebug :designsystem:lintDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :glyph-sdk:testSdkFreeDebugUnitTest :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest :spike:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :glyph-sdk:koverVerifySdkFreeDebug :designsystem:koverVerifyDebug :app:koverVerifySdkFreeDebug :app:assembleSdkFreeDebug :spike:assembleSdkFreeDebug
-  detekt: detekt :core:detektMain :agent:detektMain :evals:detektMain
+  checks: ktlintCheck lintSdkFreeDebug :designsystem:lintDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :glyph-sdk:testSdkFreeDebugUnitTest :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest :spike:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :glyph-sdk:koverVerifySdkFreeDebug :designsystem:koverVerifyDebug :app:koverVerifySdkFreeDebug :app:assembleSdkFreeDebug :spike:assembleSdkFreeDebug :build-logic:validatePlugins
+  detekt: detekt :core:detektMain :agent:detektMain :evals:detektMain :designsystem:detektDebug :glyph-sdk:detektSdkFreeDebug :app:detektSdkFreeDebug :spike:detektSdkFreeDebug
   canary: -PwithCanary :detekt-canary:detektMain
-  full: :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifyFullDebug lintFullDebug
+  full: :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifyFullDebug :glyph-sdk:koverXmlReportFullDebug lintFullDebug
+  detekt-full: :glyph-sdk:detektFullDebug
   # tasks the check-*.sh scripts run; listed for verification metadata only
-  scripts: :glyph-sdk:fetchGlyphSdk :glyph-sdk:assembleSdkFreeDebug :app:assembleSdkFreeRelease :app:assembleFullDebug
+  scripts: :glyph-sdk:fetchGlyphSdk :glyph-sdk:assembleSdkFreeDebug :app:assembleSdkFreeRelease :app:assembleFullDebug :core:koverXmlReport :agent:koverXmlReport :designsystem:koverXmlReportDebug :glyph-sdk:koverXmlReportSdkFreeDebug :app:koverXmlReportSdkFreeDebug
   ```
   - **`scripts/ci.sh`:**
   ```bash
   #!/usr/bin/env bash
   set -euo pipefail
   cd "$(dirname "$0")/.."
-  job=${1:?usage: ci.sh <checks|detekt|canary|full|verification-metadata>}
+  job=${1:?usage: ci.sh <checks|detekt|detekt-full|canary|full|verification-metadata>}
   if [ "$job" = verification-metadata ]; then
     mapfile -t all < <(grep -Ev '^(#|$)' scripts/ci-tasks.txt | sed 's/^[a-z-]*: //' | tr ' ' '\n' | grep -v '^$' | sort -u)
     exec ./gradlew --write-verification-metadata sha256 -Pcanary.ignoreFailures "${all[@]}"
@@ -1154,15 +1263,15 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   read -ra tasks <<<"$(sed -n "s/^$job: //p" scripts/ci-tasks.txt)"
   ((${#tasks[@]})) || { echo "unknown job: $job" >&2; exit 1; }
   case "$job" in
-    detekt|canary) exec bash scripts/run-detekt.sh "${tasks[@]}" ;;
+    detekt|detekt-full|canary) exec bash scripts/run-detekt.sh "${tasks[@]}" ;;
     *) exec ./gradlew "${tasks[@]}" ;;
   esac
   ```
   `-Pcanary.ignoreFailures` lets the metadata run resolve the canary's detekt classpath without failing on its deliberate findings. When a `check-*.sh` script gains a Gradle task, add it to the `scripts:` line in the same commit.
-  - **`ci.yml`.** Triggers on push and PR. Uses `ubuntu-latest` and Temurin 17. Actions are pinned by full SHA. `permissions: contents: read`. Jobs:
-    - **`checks`:** `bash scripts/ci.sh checks && bash scripts/guard-banned.sh`
+  - **`ci.yml`.** Triggers on push and PR. Uses `ubuntu-latest` and `actions/setup-java` v6 with Temurin **25** (the daemon JDK; see Global Constraints). Actions are pinned by full SHA. `permissions: contents: read`. Jobs:
+    - **`checks`:** `bash scripts/ci.sh checks && bash scripts/guard-banned.sh && bash scripts/check-tooling-active.sh`
     - **`detekt`:** `bash scripts/ci.sh detekt && bash scripts/detekt-canary.sh`. `run-detekt.sh` (Task 2 Step 7) decides from the SARIF reports: exit 1 + "detekt findings: …" or exit 2 + "detekt crashed: tool error, not findings". Gradle's own exit code is never interpreted.
-    - **`full-build`:** `bash scripts/check-glyph-sdk-fetch.sh && bash scripts/check-sdkfree-apk.sh && bash scripts/ci.sh full`
+    - **`full-build`:** `bash scripts/check-glyph-sdk-fetch.sh && bash scripts/check-sdkfree-apk.sh && bash scripts/ci.sh full && bash scripts/ci.sh detekt-full`, then the same zero-lines check on `glyph-sdk/build/reports/kover/reportFullDebug.xml` (`:glyph-sdk:detektFullDebug` needs the fetched SDK, so it lives here)
 - [ ] **Step 3: Dependency verification** (after the plugin set is final): `bash scripts/ci.sh verification-metadata`. Commit `gradle/verification-metadata.xml`, and put the same command in the README "Updating dependencies" section. [verify] that the included build `build-logic` is covered by the root file: after the run, `grep -c 'kotlin-dsl\|gradle-kotlin-dsl' gradle/verification-metadata.xml` is non-zero, and `./gradlew --refresh-dependencies :glyph-sdk:fetchGlyphSdk` passes verification; if not, record what Gradle requires for included builds and follow it.
 - [ ] **Step 4: `renovate.json`.** `{"extends":["config:recommended"],"enabledManagers":["gradle","github-actions"],"packageRules":[{"matchPackageNames":["dev.detekt*"],"automerge":false}]}`
 - [ ] **Step 5: `licences.md`.** A table of every M0 dependency: name, version, licence, GPL-3.0 compatible? (Y/N + note). The Nothing SDK row: EULA, linked via the §7 exception, never redistributed until permitted.
@@ -1177,6 +1286,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
     - the spike's DUMP-guarded receiver (debug only)
     - adb and `run-as` (debug only)
     - CI (no secrets in M0; actions pinned by SHA; read-only token)
+    - Robolectric's runtime download of `android-all-instrumented` jars, which bypasses Gradle dependency verification (open risk; candidate fix in M1: pre-resolve via a Gradle configuration + `robolectric.offline=true`; review r3 R-L5)
     - the Glyph ENABLE permission's scope
   - **Mitigations:** mapped to spec §3.5, §5.5 and §9.
   - **Open risks.**
@@ -1191,10 +1301,11 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
 ### Task 8: M0 exit review
 - [ ] **Step 1: Check spec §8 M0 exit criteria.**
   - the spike-results doc is complete
-  - D6, D10 and D37 are confirmed or amended
+  - D6, D10, D28, D33 and D37 are confirmed or amended from measurements
+  - D5x (Java versions) reflects the Task 2 gate's outcome (25 or 21 on Android modules)
   - CI is green
   - the app installs with the real ID
-  - the mirror works (`GlyphMirror` from `:app` debug)
+  - the mirror works, proven by `MirroringGlyphDisplayTest` (the sink receives the `TextGrid`), `AppContainerTest` (debug wires a `MirroringGlyphDisplay`, release doesn't) and the on-device spike `DUMP` (Task 5 Step 7.2, same class). `:app` has no glyph-playing UI in M0 (review r3 R-M2)
 - [ ] **Step 2:** Run `/code-review` on `m0-foundations`. Resolve findings, with refactors in separate commits.
 - [ ] **Step 3: Update** `docs/HANDOFF.md` (next: the D46 architecture deep-dive, then the M1 plan) and the `project-state` memory.
 - [ ] **Step 4:** Merge into the branch agreed in Task 1, after the user's OK. Push only when asked.
@@ -1217,3 +1328,29 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
 - **N9, N10, N12–N16:** as specified (`by lazy`; full listener XML; `fullDebug` Kover gate; `:designsystem:lintDebug`; `src/debug`/`src/release` `wrapForBuild`; `scripts/ci-tasks.txt` + `scripts/ci.sh`; `GlyphSession` with `profile`, `TimeSource.WithComparableMarks` and absolute deadlines).
 - **L1–L6:** `SdkMatrixService` given (Step 4a); `setGlyphMatrixTimeout` exposed as `GlyphDisplay.setAutoTimeout` instead of a spike-only extension; tag → commit SHA lookup; per-module ktlint plugin; device ID from `encoder.profile.id`; SDK URL/SHA in `gradle.properties`; tests no longer construct `GlyphException`.
 - **Rejected: none.** Deviation: L1's auto-timeout became a `GlyphDisplay` method (durable) rather than a spike-only hook, since §10 needs the behaviour and the spike can only reach `:glyph-sdk` through `GlyphDisplay`.
+
+## Review responses (rev 3 → rev 4, review r3 + research)
+- **User direction:** modern Java. Daemon and toolchain on JDK 25 (LTS; Gradle 9.6 can't run 27). Android modules target 25 behind a Task 2 gate (fallback 21). `:core`/`:agent` use `-Xjdk-release=17` because their code runs on ART. Logged as D5x. The origin of "17" is recorded in Global Constraints.
+- **R-H1:** superseded by the Java table; Android modules never set a toolchain; CI uses Temurin 25.
+- **R-H2:** `compose-ui-test-manifest` as `debugImplementation` (confirmed: `testImplementation` doesn't merge it).
+- **R-H3:** ktlint-gradle ≥ 14.1.0 + ktlint 1.8.0; `scripts/check-tooling-active.sh` (ktlint tasks exist; Kover XML counts > 0 lines; vacuous Kover pass confirmed in the intellij-coverage `Verifier`); Review Focus 9.
+- **R-M1:** bucket edges 29→`.`, 30→`:`; dead `coerceAtMost` removed.
+- **R-M2:** the mirror exit criterion is proven by tests + the spike `DUMP`.
+- **R-M3:** `stop()` cancels and joins, then releases on the container's process-lifetime scope (not `lifecycleScope`, which `onDestroy` cancels).
+- **R-M4:** 30 s connect / 60 s read timeouts; `@DisableCachingByDefault`; strict `validatePlugins` in CI.
+- **R-M5:** commands serialised through one `Channel`; the session starts only on `connect()` `Ok`.
+- **R-M6:** refuted. The `testScheduler.*` APIs used are stable in 1.11.0, so no `@OptIn`. User rule: any future opt-in needs a decision entry.
+- **R-M7:** explicit backing fields in `GlyphSession`, after a Task 2 parse canary.
+- **R-M8:** `guard-banned.sh` gains #17 layouts and the #12/#20 dependency bans; #25 deferred to M1.
+- **R-M9:** Task 6 amends D28 and D33 too; Task 8 checks them.
+- **R-L1:** refuted (`kotlin-dsl` applies assignment to plain `.kt`). **R-L2–R-L8:** applied as written.
+- **Research extras:**
+  - `ForbiddenImport` key is `forbiddenImports` (`imports:` would crash under `validation: true`).
+  - AGP 9 creates no release unit-test tasks by default → `android.onlyEnableUnitTestForTheTestedBuildType=false` [verify].
+  - detekt Android variant tasks exist in alpha.6; #9402 is a type-resolution false-positive risk, not missing tasks. They run in CI, and a task is dropped only on proven false positives.
+  - Plain `detekt` skips flavour/build-type source sets → added explicitly.
+  - Kover pinned to 0.9.11 (0.9.10 is broken under the configuration cache).
+  - Robolectric 4.17; detekt alpha.6.
+  - No repeat `startForeground` is needed for an already-foreground service (AOSP `ActiveServices`).
+- **Recorded, not fixed:** about 4 lines of quality wiring repeated per module. Convention plugin → D46 deep-dive agenda.
+- **Rejected: none.**
