@@ -683,6 +683,7 @@ sealed interface GlyphResult<out T> {
 interface GlyphDisplay {
     suspend fun connect(): GlyphResult<Unit>
     fun show(brightness: IntArray): GlyphResult<Unit>   // one 0..255 value per LED, in DeviceProfile.ledPositions() order
+    fun setAutoTimeout(enabled: Boolean): GlyphResult<Unit>   // Nothing's app-matrix auto-clear; measured in Task 6 Step 6
     fun release()
 }
 class MatrixFrameEncoder(val profile: DeviceProfile, val layout: Layout, val maxValue: Int) {
@@ -707,24 +708,77 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
   - `LedsOnly` returns the scaled array.
   - `FullSquare` writes values into `gridSize²` at the `ledPositions()` indices (`y * gridSize + x`) and leaves 0 elsewhere.
 - [ ] **Step 2: `MirroringGlyphDisplay`.** It delegates every call. On `show`, it also calls `sink(TextGrid.encode(profile, brightness))` with `profile` taken from the encoder passed to the factory. Constructor: `MirroringGlyphDisplay(delegate, profile, sink)`.
-- [ ] **Step 3: sdkFree.** `GlyphDisplays.create` returns `NoGlyphDisplay` (internal): `connect`/`show` → `Err(Unsupported)`; `release` → no-op.
+- [ ] **Step 3: sdkFree.** `GlyphDisplays.create` returns `NoGlyphDisplay` (internal): `connect`/`show`/`setAutoTimeout` → `Err(Unsupported)`; `release` → no-op.
 - [ ] **Step 4: full.**
-  - **Seam:** a consumer interface, plus the only code that uses `com.nothing.*` (excluded from Kover as a thin adapter):
+  - **Seam:** a consumer interface. `SdkMatrixService` is the only code that uses `com.nothing.*`: it maps `GlyphException` to `GlyphResult`, so nothing else (tests included) touches SDK types. It is excluded from Kover as a thin adapter.
   ```kotlin
   internal interface MatrixService {
       fun bind(onConnected: () -> Unit, onDisconnected: () -> Unit)
       fun register(deviceId: String): Boolean
-      fun setFrame(frame: IntArray)          // may throw GlyphException
-      fun close()
+      fun setFrame(frame: IntArray): GlyphResult<Unit>
+      fun setAutoTimeout(enabled: Boolean)
+      fun close(): GlyphResult<Unit>
       fun unbind()
   }
-  internal class SdkMatrixService(context: Context) : MatrixService { /* GlyphMatrixManager.getInstance(context.applicationContext) … */ }
   ```
-  - **`NothingGlyphDisplay(service, encoder, connectTimeout = 3.seconds /* [P] */, sdkDeviceId = "25111p")`:**
-    - `connect()` = `withTimeoutOrNull(connectTimeout) { suspendCancellableCoroutine { cont -> invokeOnCancellation { service.unbind() }; service.bind(onConnected = { cont.resume(if (service.register(sdkDeviceId)) Ok(Unit) else Err(Rejected("register returned false"))) }, onDisconnected = { connected = false }) } } ?: Err(ServiceUnavailable)`
-    - `show()` returns `Err(ServiceUnavailable)` when not connected. It wraps `service.setFrame(encoder.encode(…))` and maps `GlyphException` to `Rejected(e.message ?: "glyph exception")`.
-    - `release()` is idempotent: one `close()` and one `unbind()`.
-  - **Device ID:** map `DeviceProfile.id` → `Glyph.DEVICE_25111p` in a single `when` inside `SdkMatrixService`.
+  - **`NothingGlyphDisplay`** (review r2 N7: connected flag set, single resume, thread-safe flags, re-connectable, release never throws past `unbind`):
+  ```kotlin
+  internal class NothingGlyphDisplay(
+      private val service: MatrixService,
+      private val encoder: MatrixFrameEncoder,
+      private val connectTimeout: Duration = 3.seconds, // [P] until Task 6 measures binding time
+  ) : GlyphDisplay {
+      // written on the main thread by binder callbacks, read from the session dispatcher
+      private val bound = AtomicBoolean(false)
+      private val connected = AtomicBoolean(false)
+
+      override suspend fun connect(): GlyphResult<Unit> {
+          check(bound.compareAndSet(false, true)) { "connect() called twice without release()" }
+          return withTimeoutOrNull(connectTimeout) {
+              suspendCancellableCoroutine { cont ->
+                  cont.invokeOnCancellation { unbindOnce() }
+                  service.bind(
+                      onConnected = {
+                          val registered = bound.get() && service.register(encoder.profile.id)
+                          connected.set(registered)
+                          if (!registered) unbindOnce()
+                          if (cont.isActive) {
+                              cont.resume(
+                                  if (registered) GlyphResult.Ok(Unit)
+                                  else GlyphResult.Err(GlyphError.Rejected("register returned false")),
+                              )
+                          }
+                      },
+                      onDisconnected = { connected.set(false) },
+                  )
+              }
+          } ?: GlyphResult.Err(GlyphError.ServiceUnavailable)
+      }
+
+      override fun show(brightness: IntArray): GlyphResult<Unit> =
+          if (connected.get()) service.setFrame(encoder.encode(brightness))
+          else GlyphResult.Err(GlyphError.ServiceUnavailable)
+
+      override fun setAutoTimeout(enabled: Boolean): GlyphResult<Unit> =
+          if (connected.get()) GlyphResult.Ok(service.setAutoTimeout(enabled))
+          else GlyphResult.Err(GlyphError.ServiceUnavailable)
+
+      override fun release() {
+          if (!bound.get()) return
+          // the session ends with unbind whatever close reports, so its result is not surfaced
+          try { service.close() } finally { unbindOnce() }
+      }
+
+      private fun unbindOnce() {
+          connected.set(false)
+          if (bound.compareAndSet(true, false)) service.unbind()
+      }
+  }
+  ```
+  - A repeat `onConnected` (after a rebind) re-registers and updates `connected` but never resumes twice (`cont.isActive`). A late `onConnected` after `release()` registers nothing (`bound` is false).
+  - `register == false` unbinds, so a rejected session leaks no binding.
+  - `release()` → `connect()` → `release()` on the same instance works (`SpikePatternService` and `:app` may cycle it); a second `release()` is a no-op.
+  - **Device ID:** `register` receives `encoder.profile.id` (no separate `sdkDeviceId` parameter); `SdkMatrixService` maps it to `Glyph.DEVICE_25111p` in one `when` (Step 4a).
   - **Manifest:** `src/full/AndroidManifest.xml` declares the ENABLE permission. If Task 6 shows `connect()` timing out, add `<queries><package android:name="com.nothing.thirdparty"/></queries>` and record it.
 - [ ] **Step 5: Threading.** `show()` performs a synchronous binder call, so callers must invoke it off the main thread (documented as a one-line KDoc on `show`). The SDK swallows `RemoteException`, so a dead binder is only visible through `onDisconnected`.
 - [ ] **Step 6: Wire `:app`.** `AppContainer` gains `val glyphDisplay = GlyphDisplays.create(context.applicationContext, MatrixFrameEncoder.forPhone4aPro())`. In debug builds, wrap it as `MirroringGlyphDisplay(…) { Log.i("GlyphMirror", it) }` via `if (BuildConfig.DEBUG)`. PNG dumps are deferred to M2 (recorded here).
@@ -737,15 +791,21 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
     - `maxValue = 2047`: 255 → 2047, 128 → 1027
     - a wrong size throws
     - `forPhone4aPro()` returns the documented provisional values
-  - **`src/test`, `MirroringGlyphDisplayTest`:** with a fake delegate, `show` forwards and the sink receives the `TextGrid` output; `connect` and `release` are forwarded.
+  - **`src/test`, `MirroringGlyphDisplayTest`:** with a fake delegate, `show` forwards and the sink receives the `TextGrid` output; `connect`, `setAutoTimeout` and `release` are forwarded.
   - **`src/testSdkFree`, `NoGlyphDisplayTest`:** every call returns `Unsupported`; `release()` twice is safe.
   - **`src/testFull`, `NothingGlyphDisplayTest`** (fake `MatrixService`, `runTest` with virtual time):
-    - the callback never fires → `Err(ServiceUnavailable)` after 3 s of virtual time, and `unbind` is called
-    - `register` false → `Rejected`
-    - `setFrame` throws `GlyphException` → `Rejected`
-    - `show` before `connect` → `ServiceUnavailable`
+    - the callback never fires → `Err(ServiceUnavailable)` after 3 s of virtual time, and `unbind` is called once
+    - `onConnected` + `register` true → `Ok`, and `show` then reaches `setFrame` with the encoded frame
+    - `register` false → `Rejected`, and `unbind` is called
+    - `setFrame` returns `Err(Rejected("x"))` → `show` returns it unchanged
+    - `show` / `setAutoTimeout` before `connect` → `ServiceUnavailable`; after `connect` → forwarded
     - `onDisconnected`, then `show` → `ServiceUnavailable`
+    - a second `onConnected` (rebind) doesn't throw, and `connect` returned once
     - `release()` twice → one `close` and one `unbind`
+    - `connect` → `release` → `connect` → `release` → two `unbind`s
+    - `close()` throwing (fake throws `IllegalStateException`) still calls `unbind`
+    - `connect()` twice without `release()` → `IllegalStateException`
+    The fake is a plain class implementing `MatrixService`; no SDK type is constructed in tests.
   - **`:app`, `AppContainerTest`:** `glyphDisplay` is non-null; in debug it is a `MirroringGlyphDisplay`.
 - [ ] **Step 8: Learning asides:**
   - flavour source sets (`src/full`, `src/testFull`)
