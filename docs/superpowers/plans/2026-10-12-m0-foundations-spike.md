@@ -712,8 +712,9 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
 - [ ] **Step 0: Discover.** Read Task 2's `DeviceProfile`/`TextGrid` and Task 3's build file. Then inspect the AAR to confirm the class and method names:
   ```bash
   unzip -o glyph-sdk/libs/glyph-matrix-sdk.aar classes.jar -d "$SCRATCH/aar"
-  javap -cp "$SCRATCH/aar/classes.jar" com.nothing.ketchum.GlyphMatrixManager com.nothing.ketchum.GlyphMatrixManager\$Callback
+  javap -cp "$SCRATCH/aar/classes.jar" com.nothing.ketchum.GlyphMatrixManager com.nothing.ketchum.GlyphMatrixManager\$Callback com.nothing.ketchum.GlyphException com.nothing.ketchum.Glyph
   ```
+  Tests never construct `GlyphException` (review r2 L6): `SdkMatrixService` maps it to `GlyphResult`, so the `MatrixService` fake returns `Err` directly. The `javap` output above is only used to confirm Step 4a's signatures.
   Also read research §3.1 (`docs/research/2026-10-11-dev-tooling-visual-mcp.md`).
 - [ ] **Step 1: `MatrixFrameEncoder`.**
   - Require the size to equal `profile.ledCount` (otherwise `IllegalArgumentException("expected … got …")`).
@@ -793,6 +794,39 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
   - `release()` → `connect()` → `release()` on the same instance works (`SpikePatternService` and `:app` may cycle it); a second `release()` is a no-op.
   - **Device ID:** `register` receives `encoder.profile.id` (no separate `sdkDeviceId` parameter); `SdkMatrixService` maps it to `Glyph.DEVICE_25111p` in one `when` (Step 4a).
   - **Manifest:** `src/full/AndroidManifest.xml` declares the ENABLE permission. If Task 6 shows `connect()` timing out, add `<queries><package android:name="com.nothing.thirdparty"/></queries>` and record it.
+- [ ] **Step 4a: `SdkMatrixService`** (full only; the only `com.nothing.*` user; review r2 L1):
+  ```kotlin
+  internal class SdkMatrixService(context: Context) : MatrixService {
+      private val manager = GlyphMatrixManager.getInstance(context.applicationContext)
+
+      override fun bind(onConnected: () -> Unit, onDisconnected: () -> Unit) {
+          manager.init(object : GlyphMatrixManager.Callback {
+              override fun onServiceConnected(name: ComponentName) = onConnected()
+              override fun onServiceDisconnected(name: ComponentName) = onDisconnected()
+          })
+      }
+
+      override fun register(deviceId: String): Boolean = sdkDevice(deviceId)?.let(manager::register) ?: false
+      override fun setFrame(frame: IntArray): GlyphResult<Unit> = glyphCall { manager.setAppMatrixFrame(frame) }
+      override fun setAutoTimeout(enabled: Boolean) = manager.setGlyphMatrixTimeout(enabled)
+      override fun close(): GlyphResult<Unit> = glyphCall { manager.closeAppMatrix() }
+      override fun unbind() = manager.unInit()
+
+      private fun sdkDevice(id: String): String? = when (id) {
+          DeviceProfile.Phone4aPro.id -> Glyph.DEVICE_25111p
+          else -> null
+      }
+
+      private inline fun glyphCall(block: () -> Unit): GlyphResult<Unit> =
+          try {
+              block()
+              GlyphResult.Ok(Unit)
+          } catch (e: GlyphException) {
+              GlyphResult.Err(GlyphError.Rejected(e.message ?: "glyph exception"))
+          }
+  }
+  ```
+  [verify] in Step 0's `javap` output: `Callback` is an interface with exactly `onServiceConnected(ComponentName)` / `onServiceDisconnected(ComponentName)`; `init` takes that `Callback`; `Glyph.DEVICE_25111p` is a `String`; `GlyphException` extends `Exception` (so `e.message` is its detail). If any differs, adjust only this class: the `MatrixService` seam stays.
 - [ ] **Step 5: Threading.** `show()` performs a synchronous binder call, so callers must invoke it off the main thread (documented as a one-line KDoc on `show`). The SDK swallows `RemoteException`, so a dead binder is only visible through `onDisconnected`.
 - [ ] **Step 6: Wire `:app`.** `AppContainer` gains `glyphDisplay` exactly as in Task 2 Step 6. The mirror is chosen by **build-type source set**, not `BuildConfig` (AGP 9 has `buildFeatures.buildConfig` off by default; review r2 N14):
   ```kotlin
