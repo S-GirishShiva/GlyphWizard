@@ -78,8 +78,9 @@ config/detekt/detekt.yml
 build-logic/  settings.gradle.kts  build.gradle.kts
   src/main/kotlin/.../buildlogic/FetchGlyphSdk.kt    pinned, hash-checked SDK download task
   src/main/kotlin/.../buildlogic/GlyphSdkFetchPlugin.kt  plugin glyphwizard.glyph-sdk-fetch (task + glyphSdkAar + glyphSdk configuration)
-detekt-canary/src/main/kotlin/Canary.kt            known violations detekt MUST report (D47)
-scripts/check-glyph-sdk-fetch.sh  scripts/guard-banned.sh  scripts/check-sdkfree-apk.sh  scripts/detekt-canary.sh
+detekt-canary/  build.gradle.kts  src/main/kotlin/Canary.kt   JVM module, only with -PwithCanary; violations detekt MUST report (D47)
+scripts/check-glyph-sdk-fetch.sh  scripts/guard-banned.sh  scripts/check-sdkfree-apk.sh
+scripts/run-detekt.sh  scripts/detekt-canary.sh  scripts/ci.sh  scripts/ci-tasks.txt
 core/   DeviceProfile.kt (provisional)  TextGrid.kt (provisional, text-grid codec) + tests
 agent/  AgentModule.kt (placeholder entry: `object AgentModule { const val NAME = "agent" }`) + test
 evals/  Main.kt (prints usage) + test
@@ -151,7 +152,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 - Modify: `settings.gradle.kts`, `build.gradle.kts`, `gradle/libs.versions.toml`, `gradle.properties`, `app/build.gradle.kts`, `app/src/main/AndroidManifest.xml`, `app/src/main/res/values/themes.xml`
 - Delete: `app/src/main/res/values-night/themes.xml`, the example tests, `app/src/main/res/drawable*`, and the template's `appcompat`/`material` usages
 - Move: `app/src/main/java/com/example/glyphwizard` → `app/src/main/kotlin/io/github/sgirishshiva/glyphwizard`
-- Create: the module dirs, `.editorconfig`, `config/detekt/detekt.yml`, `detekt-canary/`, `scripts/guard-banned.sh`, `scripts/detekt-canary.sh`, `docs/learning/m0.md`
+- Create: the module dirs, `.editorconfig`, `config/detekt/detekt.yml`, `detekt-canary/` (module), `scripts/guard-banned.sh`, `scripts/run-detekt.sh`, `scripts/detekt-canary.sh`, `docs/learning/m0.md`
 
 **Interfaces (produces):**
 - module paths `:core :agent :evals :designsystem :glyph-sdk :app :spike`
@@ -190,11 +191,17 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   max_line_length = 120
   ktlint_code_style = ktlint_official
   ```
-- [ ] **Step 3: `settings.gradle.kts`.** Add `include(":core", ":agent", ":evals", ":designsystem", ":glyph-sdk", ":app", ":spike")`.
+- [ ] **Step 3: `settings.gradle.kts`.** Add:
+  ```kotlin
+  include(":core", ":agent", ":evals", ":designsystem", ":glyph-sdk", ":app", ":spike")
+  if (providers.gradleProperty("withCanary").isPresent) include(":detekt-canary")
+  ```
+  The canary holds deliberate violations, so normal builds never see it (Step 7).
 - [ ] **Step 4: JVM modules** `core`, `agent`, `evals`:
   ```kotlin
   plugins { alias(libs.plugins.kotlin.jvm); alias(libs.plugins.kover); alias(libs.plugins.detekt) }
   kotlin { jvmToolchain(17) }
+  detekt { buildUponDefaultConfig = true }
   dependencies {
       testImplementation(platform(libs.junit.bom))
       testImplementation(libs.junit.jupiter)
@@ -244,7 +251,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
       }
   }
   ```
-- [ ] **Step 5: Android modules.** `designsystem`, `glyph-sdk`, `app` and `spike` each use `alias(libs.plugins.android.library)` (or `application`) plus `kover` and `detekt`, and Compose modules add `alias(libs.plugins.kotlin.compose)`. Set the namespace from the Global Constraints, the `compileSdk { version = release(37) }` DSL, `minSdk = 35`, `compileOptions` with Java 17, and `testOptions.unitTests.isIncludeAndroidResources = true`. Flavours, in `glyph-sdk`, `app` and `spike`:
+- [ ] **Step 5: Android modules.** `designsystem`, `glyph-sdk`, `app` and `spike` each use `alias(libs.plugins.android.library)` (or `application`) plus `kover` and `detekt` (with `detekt { buildUponDefaultConfig = true }`), and Compose modules add `alias(libs.plugins.kotlin.compose)`. Set the namespace from the Global Constraints, the `compileSdk { version = release(37) }` DSL, `minSdk = 35`, `compileOptions` with Java 17, and `testOptions.unitTests.isIncludeAndroidResources = true`. Flavours, in `glyph-sdk`, `app` and `spike`:
   ```kotlin
   flavorDimensions += "sdk"
   productFlavors {
@@ -289,19 +296,203 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   ```
   `GlyphDisplays`/`MatrixFrameEncoder` come from Task 4. Until Task 4 lands, the container line is added in Task 4 Step 6. Set the theme parent `Theme.GlyphWizard` → `android:Theme.Material.NoActionBar`. In `designsystem`, add `@Composable fun GlyphTheme(content: @Composable () -> Unit) = MaterialTheme(content = content)`, a minimal placeholder that M2 fills from the design-log tokens.
 - [ ] **Step 7: detekt and guards (D47).**
-  - **`config/detekt/detekt.yml`:** built-in defaults with `maxIssues: 0`. Run plain `detekt`, no type resolution (detekt #9402).
-  - **`detekt-canary/`:** a source directory (not a module), with a `Canary.kt` containing exactly one each of `!!`, `GlobalScope.launch {}`, `runBlocking {}` and a mutable `object` with `var`.
-  - **`scripts/detekt-canary.sh`:** runs the detekt CLI on `detekt-canary/` and **fails unless** the report contains `UnsafeCallOnNullableType`, `GlobalCoroutineUsage` and the rule IDs `modern-kotlin-patterns.md` maps for `runBlocking`/mutable `object` (copy the exact IDs from that doc).
-  - **Exit codes:** detekt exit 1 = tool error (CI prints "detekt crashed: tool error, not findings"); exit 2 = findings.
-  - **`scripts/guard-banned.sh`:** greps `*/src/main/**/*.kt` (excluding `detekt-canary/`) for `!!`, `GlobalScope`, `runBlocking`, `LiveData`, `AsyncTask`, `findViewById` and `kapt`, and fails with file:line.
-  - **Duplicate bans in Lint/ktlint** where the patterns doc lists equivalents.
+  - **Wiring:** every module (JVM and Android) applies `alias(libs.plugins.detekt)` and sets `detekt { buildUponDefaultConfig = true }`. The plugin reads `config/detekt/detekt.yml` from the root project by default [verify: `./gradlew :core:detekt --info | grep -m1 detekt.yml`; if absent, add `config.setFrom(isolated.rootProject.projectDirectory.file("config/detekt/detekt.yml"))`]. Every rule's default severity is `error`, so any finding fails the task (the canary proves this).
+  - **Two kinds of task** (detekt docs: rules that need type resolution "will not run" without it):
+    - `detekt`: plain, every module, no type resolution.
+    - `detektMain`: type-resolved, on the JVM modules (`:core`, `:agent`, `:evals`, `:detekt-canary`). This is where `UnsafeCallOnNullableType` and `ForbiddenMethodCall` actually run.
+    - Android variant tasks (`detektSdkFreeDebug`, `detektDebug`) are blocked by detekt #9402 on AGP 9 built-in Kotlin [verify on the pinned alpha: `./gradlew :glyph-sdk:detektSdkFreeDebug`]. If they work, add them to the `detekt` line of `scripts/ci-tasks.txt`. Until then, `guard-banned.sh` covers the type-resolved bans on Android modules.
+  - **`config/detekt/detekt.yml`** (activates every detekt row of the `modern-kotlin-patterns.md` §3 table; `config.validation` turns a misplaced key into a crash):
+  ```yaml
+  config:
+    validation: true
+
+  coroutines:
+    GlobalCoroutineUsage:
+      active: true
+    InjectDispatcher:
+      active: true
+      dispatcherNames: ['IO', 'Default', 'Unconfined']
+    SleepInsteadOfDelay:
+      active: true
+    SuspendFunSwallowedCancellation:
+      active: true
+    SuspendFunWithFlowReturnType:
+      active: true
+    SuspendFunInFinallySection:
+      active: true
+
+  potential-bugs:
+    UnsafeCallOnNullableType:
+      active: true
+    MapGetWithNotNullAssertionOperator:
+      active: true
+    UnsafeCast:
+      active: true
+    CastNullableToNonNullableType:
+      active: true
+    DoubleMutabilityForCollection:
+      active: true
+    LateinitUsage:
+      active: true
+      excludes: ['**/test/**', '**/testSdkFree/**', '**/testFull/**', '**/androidTest/**']
+
+  style:
+    ForbiddenMethodCall:
+      active: true
+      methods:
+        - value: 'kotlinx.coroutines.runBlocking'
+          reason: 'suspend or use an owned scope (patterns #6)'
+        - value: 'java.lang.Thread.sleep'
+          reason: 'use delay (patterns #7)'
+        - value: 'java.lang.System.currentTimeMillis'
+          reason: 'inject a Clock or TimeSource (patterns #14)'
+        - value: 'android.app.Activity.findViewById'
+          reason: 'Compose only (patterns #16)'
+        - value: 'androidx.activity.ComponentActivity.onBackPressed'
+          reason: 'BackHandler / Nav3 (patterns #22)'
+        - value: 'androidx.compose.runtime.collectAsState'
+          reason: 'use collectAsStateWithLifecycle (patterns #30)'
+    ForbiddenImport:
+      active: true
+      imports:
+        - value: 'androidx.lifecycle.LiveData'
+          reason: 'StateFlow (patterns #11)'
+        - value: 'androidx.lifecycle.MutableLiveData'
+          reason: 'StateFlow (patterns #11)'
+        - value: 'io.reactivex.*'
+          reason: 'coroutines/Flow (patterns #12)'
+        - value: 'com.google.gson.*'
+          reason: 'kotlinx.serialization (patterns #13)'
+        - value: 'com.squareup.moshi.*'
+          reason: 'kotlinx.serialization (patterns #13)'
+        - value: 'org.json.*'
+          reason: 'kotlinx.serialization (patterns #13)'
+        - value: 'java.util.Date'
+          reason: 'kotlin.time / Clock (patterns #14)'
+        - value: 'java.util.Calendar'
+          reason: 'kotlin.time / Clock (patterns #14)'
+        - value: 'java.text.SimpleDateFormat'
+          reason: 'kotlin.time / Clock (patterns #14)'
+        - value: 'java.util.UUID'
+          reason: 'kotlin.uuid.Uuid (patterns #15)'
+        - value: 'androidx.fragment.*'
+          reason: 'Compose (patterns #16)'
+        - value: 'androidx.appcompat.*'
+          reason: 'ComponentActivity + Compose (patterns #16)'
+        - value: 'android.os.AsyncTask'
+          reason: 'coroutines (patterns #18)'
+        - value: 'android.os.Handler'
+          reason: 'coroutines (patterns #18)'
+        - value: 'java.util.concurrent.Executors'
+          reason: 'coroutines (patterns #18)'
+        - value: 'android.support.*'
+          reason: 'AndroidX (patterns #19)'
+        - value: 'android.content.SharedPreferences'
+          reason: 'DataStore (patterns #21)'
+    ForbiddenAnnotation:
+      active: true
+      annotations:
+        - value: 'kotlin.OptIn'
+          reason: 'needs a decision entry; suppress per file citing it (patterns #29)'
+    DataClassShouldBeImmutable:
+      active: true
+    VarCouldBeVal:
+      active: true
+    UtilityClassWithPublicConstructor:
+      active: true
+    RangeUntilInsteadOfRangeTo:
+      active: true
+  ```
+  [verify] the rule-set placement against the pinned alpha's `default-detekt-config.yml` (`unzip -p ~/.gradle/caches/modules-2/files-2.1/dev.detekt/detekt-core/<v>/*/detekt-core-<v>.jar default-detekt-config.yml | grep -n -e LateinitUsage -e ForbiddenMethodCall`); with `validation: true` a wrong placement makes detekt crash, which `run-detekt.sh` reports as a crash.
+  - **`:detekt-canary`** (a JVM module, included only with `-PwithCanary`; see Step 3):
+    - `detekt-canary/build.gradle.kts`:
+    ```kotlin
+    plugins { alias(libs.plugins.kotlin.jvm); alias(libs.plugins.detekt) }
+    kotlin { jvmToolchain(17) }
+    dependencies { implementation(libs.coroutines.core) }
+    detekt {
+        buildUponDefaultConfig = true
+        ignoreFailures = providers.gradleProperty("canary.ignoreFailures").isPresent
+    }
+    ```
+    - `detekt-canary/src/main/kotlin/Canary.kt`, exactly one violation per expected ID:
+    ```kotlin
+    package canary
+
+    import kotlinx.coroutines.GlobalScope
+    import kotlinx.coroutines.Job
+    import kotlinx.coroutines.launch
+    import kotlinx.coroutines.runBlocking
+
+    fun unsafe(s: String?): Int = s!!.length                 // UnsafeCallOnNullableType
+    fun global(): Job = GlobalScope.launch { }               // GlobalCoroutineUsage
+    fun blocking(): Unit = runBlocking { }                   // ForbiddenMethodCall
+    ```
+    These are the only comments of their kind allowed: they name what each line must trigger.
+    - The mutable `object` ban (patterns #26) has no detekt rule, so it is not in the canary. `guard-banned.sh` checks it (below), and review remains the backstop.
+  - **`scripts/run-detekt.sh`** (review r2 N6: Gradle exits 1 for findings and crashes alike, so classify by reports, not exit code):
+  ```bash
+  #!/usr/bin/env bash
+  # Gradle exits 1 for detekt findings and for crashes alike, so classify by the SARIF reports.
+  set -euo pipefail
+  find . -path ./build-logic -prune -o -path '*/build/reports/detekt' -type d -prune -exec rm -rf {} +
+  if ./gradlew "$@"; then echo "detekt: clean"; exit 0; fi
+  mapfile -t reports < <(find . -path '*/build/reports/detekt/*.sarif' -type f)
+  if ((${#reports[@]})) && grep -q '"ruleId"' "${reports[@]}"; then
+    echo "detekt findings: ${reports[*]}" >&2
+    exit 1
+  fi
+  echo "detekt crashed: tool error, not findings" >&2
+  exit 2
+  ```
+  SARIF is on by default [verify: `ls core/build/reports/detekt/` after `./gradlew :core:detekt` lists a `.sarif`; if not, enable `reports { sarif.required = true }` on the `Detekt` tasks of each module].
+  - **`scripts/detekt-canary.sh`** (tests both `run-detekt.sh` paths, then the IDs):
+  ```bash
+  #!/usr/bin/env bash
+  set -euo pipefail
+  fail() { echo "FAIL: $*" >&2; exit 1; }
+  rc=0; bash scripts/run-detekt.sh :core:detektNoSuchTask >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 2 ] || fail "crash path: expected exit 2, got $rc"
+  rc=0; bash scripts/ci.sh canary || rc=$?
+  [ "$rc" -eq 1 ] || fail "findings path: expected exit 1, got $rc"
+  mapfile -t reports < <(find detekt-canary/build/reports/detekt -name '*.sarif' -type f)
+  ((${#reports[@]})) || fail "no canary SARIF report"
+  for id in UnsafeCallOnNullableType GlobalCoroutineUsage ForbiddenMethodCall; do
+    grep -q "$id" "${reports[@]}" || fail "detekt no longer reports $id"
+  done
+  echo OK
+  ```
+  (`scripts/ci.sh` and `scripts/ci-tasks.txt` are defined in Task 7 Step 2; until then run `bash scripts/run-detekt.sh -PwithCanary :detekt-canary:detektMain` in its place.)
+  - **`scripts/guard-banned.sh`** (production sources only: every `src/<set>` except test sets; `detekt-canary/` and `build-logic/` excluded). Every check writes to a file before `grep`, so `pipefail` can't hide a match:
+  ```bash
+  #!/usr/bin/env bash
+  set -euo pipefail
+  hits=$(mktemp)
+  mapfile -t files < <(find . \( -path ./detekt-canary -o -path ./build-logic -o -path '*/build' -o -path '*/src/test*' -o -path '*/src/androidTest*' \) -prune -o -path '*/src/*' -name '*.kt' -print)
+  ((${#files[@]})) || { echo "FAIL: no sources found" >&2; exit 1; }
+  grep -nHE '!!|\bGlobalScope\b|\brunBlocking\b|\bLiveData\b|\bAsyncTask\b|\bfindViewById\b|\bThread\.sleep\b' "${files[@]}" >>"$hits" || true
+  mapfile -t builds < <(find . \( -path ./build-logic -o -path '*/build' \) -prune -o -name '*.gradle.kts' -print)
+  grep -nH 'kapt' "${builds[@]}" >>"$hits" || true
+  # mutable state in an `object` / `companion object` body (patterns #26); heuristic, review is the backstop
+  awk '
+    /^[[:space:]]*([a-z]+[[:space:]]+)*object([[:space:]]|\{)/ && /\{/ { inobj = 1; depth = 0 }
+    inobj {
+      if (depth == 1 && /(^|[[:space:]])var[[:space:]]/) print FILENAME ":" FNR ": var in object"
+      depth += gsub(/\{/, "{") - gsub(/\}/, "}")
+      if (depth <= 0) inobj = 0
+    }' "${files[@]}" >>"$hits"
+  if [ -s "$hits" ]; then cat "$hits" >&2; echo "FAIL: banned constructs" >&2; exit 1; fi
+  echo OK
+  ```
+  Test it (after writing it): add a temporary `object X {\n    var n = 0\n}` and a `runBlocking {}` to `core/src/main/kotlin/…/Tmp.kt` → the script fails listing both lines; delete the file → `OK`.
+  - **Duplicate bans in Lint/ktlint** where the patterns doc lists equivalents (L `ObsoleteSdkInt`, the compose-rules ktlint set).
 - [ ] **Step 8: Learning asides** in `docs/learning/m0.md`, 2–4 sentences each plus a link:
   - Gradle modules (like Go modules / packages in one repo)
   - the version catalog
   - product flavours (like build tags)
   - `Application` vs `Activity` (process entry vs screen)
   - the manual DI container (like wiring in `main.go`)
-  - Kover, ktlint and detekt
+  - Kover, ktlint and detekt, and why some detekt rules need type resolution (they ask the compiler what a call resolves to, like `go vet` vs `grep`)
 - [ ] **Step 9: Tests (after the code).**
   - **`DeviceProfileTest`:**
     - 137 LEDs
@@ -323,7 +514,8 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - **`:app`:** a Robolectric `MainActivityTest` (`@Config(sdk = [36])`) launches it and asserts that the app name is displayed. `AppContainerTest` asserts that `glyphDisplay` is a `GlyphDisplay` (added in Task 4).
 - [ ] **Step 10: Verify.**
   ```bash
-  ./gradlew ktlintCheck detekt lintSdkFreeDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :app:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :app:assembleSdkFreeDebug :spike:assembleSdkFreeDebug
+  ./gradlew ktlintCheck lintSdkFreeDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :app:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :app:assembleSdkFreeDebug :spike:assembleSdkFreeDebug
+  bash scripts/run-detekt.sh detekt :core:detektMain :agent:detektMain :evals:detektMain
   bash scripts/detekt-canary.sh && bash scripts/guard-banned.sh
   ```
   Expected: all pass.
@@ -704,7 +896,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`.
     ./gradlew ktlintCheck lintSdkFreeDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :glyph-sdk:testSdkFreeDebugUnitTest :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest :spike:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :glyph-sdk:koverVerifySdkFreeDebug :designsystem:koverVerifyDebug :app:koverVerifySdkFreeDebug
     bash scripts/guard-banned.sh
     ```
-  - **`detekt`:** runs `./gradlew detekt`. Exit 1 prints "detekt crashed: tool error, not findings" and fails; exit 2 means findings and fails. Then `bash scripts/detekt-canary.sh`.
+  - **`detekt`:** `bash scripts/ci.sh detekt && bash scripts/detekt-canary.sh`. `run-detekt.sh` (Task 2 Step 7) decides from the SARIF reports: exit 1 + "detekt findings: …" or exit 2 + "detekt crashed: tool error, not findings". Gradle's own exit code is never interpreted.
   - **`full-build`:** `bash scripts/check-glyph-sdk-fetch.sh && bash scripts/check-sdkfree-apk.sh && ./gradlew :glyph-sdk:testFullDebugUnitTest lintFullDebug`.
 - [ ] **Step 3: Dependency verification** (after the plugin set is final):
   ```bash
