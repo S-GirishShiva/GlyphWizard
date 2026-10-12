@@ -1,6 +1,6 @@
 # GlyphWizard — Front-end Code Guidelines (Compose)
 
-**Status:** v1, part of the v1 spec (§6.5). Enforced by review and, where marked ⚙, by tooling.
+**Status:** v1, part of the v1 spec (§6.4). Enforced by review and, where marked ⚙, by tooling.
 
 **Goal:** every visual decision lives in **one place**, feature code only composes building blocks, and the UI stays consistent, testable and fast.
 

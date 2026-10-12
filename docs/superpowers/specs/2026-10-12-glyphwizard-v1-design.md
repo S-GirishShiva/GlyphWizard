@@ -73,7 +73,7 @@ On a Nothing Phone (4a) Pro (Android 16):
 :agent      pure Kotlin/JVM  agent loop, provider adapters (Ktor), stream parser, tool registry
                              + tier filter, context assembly, epochs/compaction, probe,
                              spend accounting, traces
-:designsystem Android        single source of all UI tokens + Gw* components + previews (§6.5)
+:designsystem Android        single source of all UI tokens + Gw* components + previews (§6.4)
 :glyph-sdk  Android          Nothing SDK bridge behind an interface; absent in `sdkFree`
 :app        Android          Compose UI, manual DI container, storage, Keystore,
                              foreground service, NotificationListener + trigger runtime,
@@ -388,10 +388,10 @@ The **atlas** is the visual spec, and **flow.md** is the navigation. Key behavio
 
 **Settings:** per UI31, plus data & backup and about (with the not-affiliated disclaimer).
 
-### 6.5 Front-end code quality (D44)
+### 6.4 Front-end code quality (D44)
 All tokens (colour, type, spacing, shape, glass, motion, haptics, icons) and all `Gw*` components live in **`:designsystem`**. Feature code may use only those. The rules R1–R14 are enforced by Lint/detekt/compose-rules and review: no raw colours or dp, strings in resources, stateless hoisted composables, UDF, immutable state, previews plus a screenshot test per component, semantics built in, motion and haptics via tokens. Full guidelines: **`docs/design/frontend-guidelines.md`**.
 
-### 6.4 Copy rules
+### 6.5 Copy rules
 - Sentence case, plain verbs.
 - An action keeps the same name throughout a flow.
 - Errors say what happened and how to fix it.
