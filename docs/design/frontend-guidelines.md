@@ -48,11 +48,11 @@
 | R3 | All user-facing text in string resources; no string literals in composables | ⚙ Android Lint `HardcodedText` / custom check |
 | R4 | Every interactive element has a content description or semantic label, and is ≥ 48 dp | ⚙ compose-rules + `Modifier.minimumInteractiveComponentSize()` built into components |
 | R5 | Every `Gw*` component has `@GwPreviews` (dark, light, 2× font, RTL off for v1) and a Roborazzi screenshot test | ⚙ CI fails if a public component lacks a preview test |
-| R6 | Composables are **stateless by default**: state is hoisted, values go in and events (lambdas) come out | review; ⚙ compose-rules `ComposeViewModelForwarding`, `ComposeMutableParameters` |
+| R6 | Composables are **stateless by default**: state is hoisted, values go in and events (lambdas) come out | review; ⚙ compose-rules `ViewModelForwarding`, `MutableParams` |
 | R7 | **One-way data flow:** UI → `onEvent` → ViewModel → `:core` command → new immutable state → UI | review |
-| R8 | ViewModels are never passed into child composables; only screen-level composables touch a ViewModel | ⚙ compose-rules `ComposeViewModelInjection` |
+| R8 | ViewModels are never passed into child composables; only screen-level composables touch a ViewModel | ⚙ compose-rules `ViewModelInjection` |
 | R9 | UI state types are **immutable and stable** (`data class` with `val`, `ImmutableList` from kotlinx.collections.immutable); no `var` in state | ⚙ compose compiler stability report checked in CI |
-| R10 | `Modifier` is the first optional parameter of every public composable, defaulting to `Modifier`, and is applied to the root only | ⚙ compose-rules `ComposeModifierMissing` / `ComposeModifierReused` |
+| R10 | `Modifier` is the first optional parameter of every public composable, defaulting to `Modifier`, and is applied to the root only | ⚙ compose-rules `ModifierMissing` / `ModifierReused` |
 | R11 | No business logic in composables: formatting, validation and math live in ViewModels or `:core` | review |
 | R12 | Motion uses `GlyphTheme.motion` specs only, and respects reduced motion through a single `LocalReducedMotion` | ⚙ R1 check on raw `tween/spring` |
 | R13 | Haptics go through `GlyphTheme.haptics` (honours the user toggle) and never call `performHapticFeedback` directly | ⚙ forbidden call outside `:designsystem` |

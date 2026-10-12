@@ -4,7 +4,7 @@ An open-source, non-commercial Android app (Kotlin/Compose) for designing and tr
 
 ## Source of truth (read before acting)
 - Spec: `docs/superpowers/specs/2026-10-12-glyphwizard-v1-design.md`
-- Code rules: `docs/engineering/code-guidelines.md` (**mandatory before any code task or review**)
+- Code rules: `docs/engineering/code-guidelines.md` + `docs/engineering/modern-kotlin-patterns.md` (**both mandatory before any code task or review**; never write legacy Java-style patterns)
 - UI rules: `docs/design/frontend-guidelines.md`
 - Decisions: `docs/research/decisions.md` · UI decisions: `docs/design/design-log.md`
 - Screens: `docs/design/atlas.html` · navigation: `docs/design/flow.md`
