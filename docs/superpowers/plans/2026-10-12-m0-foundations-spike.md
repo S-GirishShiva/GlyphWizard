@@ -146,7 +146,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 - [ ] **Step 4: `README.md`.** Cover:
   - what the app is, plus the not-affiliated line
   - building: `./gradlew :app:assembleSdkFreeDebug` (offline-capable); `full` fetches the SDK (needs network)
-  - regenerating dependency verification (the Task 7 command)
+  - regenerating dependency verification: `bash scripts/ci.sh verification-metadata` (Task 7)
   - a link to the spec, and the licence
 - [ ] **Step 5: Commit.** Slug: `m0-identity`.
 
@@ -1045,7 +1045,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
 
 ### Task 7: CI, supply chain, threat model
 
-**Files:** Create `.github/workflows/ci.yml`, `scripts/check-sdkfree-apk.sh`, `renovate.json`, `docs/engineering/threat-model.md`, `docs/engineering/licences.md`; modify `gradle/verification-metadata.xml` and `README.md`.
+**Files:** Create `.github/workflows/ci.yml`, `scripts/ci-tasks.txt`, `scripts/ci.sh`, `scripts/check-sdkfree-apk.sh`, `renovate.json`, `docs/engineering/threat-model.md`, `docs/engineering/licences.md`; modify `gradle/verification-metadata.xml` and `README.md`.
 
 - [ ] **Step 0: Discover.** Read every script from Tasks 2–3 and the README. Look up the current commit SHAs of `actions/checkout`, `actions/setup-java` and `gradle/actions/setup-gradle` via `curl -fsSL https://api.github.com/repos/<owner>/<repo>/releases/latest` (no `gh`).
 - [ ] **Step 1: `scripts/check-sdkfree-apk.sh`.** Every `grep -q` reads a file, never a pipe: under `pipefail`, an early `grep -q` match kills the producer with SIGPIPE and the pipeline's non-zero status would skip `&& fail` (review r2 N5). Permissions come from `aapt2`, because the APK manifest is binary XML that `strings` can miss (N11).
@@ -1083,19 +1083,40 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   - The old `:app:dependencies | grep glyph-matrix-sdk` check is gone: a `files(…)` dependency never appears in that report, so it could not fail. "No `glyph-sdk/libs/` after a clean sdkFree release build" replaces it.
   - `strings` stays for the dex files: dex string pools are MUTF-8, so ASCII type descriptors like `Lcom/nothing/…` are visible to it.
   - Apply the same rule to every script in this plan: `grep -q` reads a file or a here-string (`<<<"$out"`), never a pipe.
-- [ ] **Step 2: `ci.yml`.** Triggers on push and PR. Uses `ubuntu-latest` and Temurin 17. Actions are pinned by full SHA. `permissions: contents: read`. Jobs:
-  - **`checks`:**
-    ```bash
-    ./gradlew ktlintCheck lintSdkFreeDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :glyph-sdk:testSdkFreeDebugUnitTest :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest :spike:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :glyph-sdk:koverVerifySdkFreeDebug :designsystem:koverVerifyDebug :app:koverVerifySdkFreeDebug
-    bash scripts/guard-banned.sh
-    ```
-  - **`detekt`:** `bash scripts/ci.sh detekt && bash scripts/detekt-canary.sh`. `run-detekt.sh` (Task 2 Step 7) decides from the SARIF reports: exit 1 + "detekt findings: …" or exit 2 + "detekt crashed: tool error, not findings". Gradle's own exit code is never interpreted.
-  - **`full-build`:** `bash scripts/check-glyph-sdk-fetch.sh && bash scripts/check-sdkfree-apk.sh && ./gradlew :glyph-sdk:testFullDebugUnitTest lintFullDebug`.
-- [ ] **Step 3: Dependency verification** (after the plugin set is final):
-  ```bash
-  ./gradlew --write-verification-metadata sha256 ktlintCheck detekt lintSdkFreeDebug lintFullDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :glyph-sdk:testSdkFreeDebugUnitTest :glyph-sdk:testFullDebugUnitTest :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest :spike:testSdkFreeDebugUnitTest koverVerify :app:assembleSdkFreeRelease :app:assembleFullDebug
+- [ ] **Step 2: One task list, then `ci.yml`** (review r2 N15: CI and the verification-metadata command read the same file, so they can't drift).
+  - **`scripts/ci-tasks.txt`:**
   ```
-  Commit `gradle/verification-metadata.xml`, and put the same command in the README "Updating dependencies" section.
+  # <job>: <gradle args>. Read by scripts/ci.sh (CI jobs, README, verification metadata).
+  checks: ktlintCheck lintSdkFreeDebug :designsystem:lintDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :glyph-sdk:testSdkFreeDebugUnitTest :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest :spike:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :glyph-sdk:koverVerifySdkFreeDebug :designsystem:koverVerifyDebug :app:koverVerifySdkFreeDebug :app:assembleSdkFreeDebug :spike:assembleSdkFreeDebug
+  detekt: detekt :core:detektMain :agent:detektMain :evals:detektMain
+  canary: -PwithCanary :detekt-canary:detektMain
+  full: :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifyFullDebug lintFullDebug
+  # tasks the check-*.sh scripts run; listed for verification metadata only
+  scripts: :glyph-sdk:fetchGlyphSdk :glyph-sdk:assembleSdkFreeDebug :app:assembleSdkFreeRelease :app:assembleFullDebug
+  ```
+  - **`scripts/ci.sh`:**
+  ```bash
+  #!/usr/bin/env bash
+  set -euo pipefail
+  cd "$(dirname "$0")/.."
+  job=${1:?usage: ci.sh <checks|detekt|canary|full|verification-metadata>}
+  if [ "$job" = verification-metadata ]; then
+    mapfile -t all < <(grep -Ev '^(#|$)' scripts/ci-tasks.txt | sed 's/^[a-z-]*: //' | tr ' ' '\n' | grep -v '^$' | sort -u)
+    exec ./gradlew --write-verification-metadata sha256 -Pcanary.ignoreFailures "${all[@]}"
+  fi
+  read -ra tasks <<<"$(sed -n "s/^$job: //p" scripts/ci-tasks.txt)"
+  ((${#tasks[@]})) || { echo "unknown job: $job" >&2; exit 1; }
+  case "$job" in
+    detekt|canary) exec bash scripts/run-detekt.sh "${tasks[@]}" ;;
+    *) exec ./gradlew "${tasks[@]}" ;;
+  esac
+  ```
+  `-Pcanary.ignoreFailures` lets the metadata run resolve the canary's detekt classpath without failing on its deliberate findings. When a `check-*.sh` script gains a Gradle task, add it to the `scripts:` line in the same commit.
+  - **`ci.yml`.** Triggers on push and PR. Uses `ubuntu-latest` and Temurin 17. Actions are pinned by full SHA. `permissions: contents: read`. Jobs:
+    - **`checks`:** `bash scripts/ci.sh checks && bash scripts/guard-banned.sh`
+    - **`detekt`:** `bash scripts/ci.sh detekt && bash scripts/detekt-canary.sh`. `run-detekt.sh` (Task 2 Step 7) decides from the SARIF reports: exit 1 + "detekt findings: …" or exit 2 + "detekt crashed: tool error, not findings". Gradle's own exit code is never interpreted.
+    - **`full-build`:** `bash scripts/check-glyph-sdk-fetch.sh && bash scripts/check-sdkfree-apk.sh && bash scripts/ci.sh full`
+- [ ] **Step 3: Dependency verification** (after the plugin set is final): `bash scripts/ci.sh verification-metadata`. Commit `gradle/verification-metadata.xml`, and put the same command in the README "Updating dependencies" section. [verify] that the included build `build-logic` is covered by the root file: after the run, `grep -c 'kotlin-dsl\|gradle-kotlin-dsl' gradle/verification-metadata.xml` is non-zero, and `./gradlew --refresh-dependencies :glyph-sdk:fetchGlyphSdk` passes verification; if not, record what Gradle requires for included builds and follow it.
 - [ ] **Step 4: `renovate.json`.** `{"extends":["config:recommended"],"enabledManagers":["gradle","github-actions"],"ignoreDeps":["glyphSdkUrl","glyphSdkSha256"],"packageRules":[{"matchPackageNames":["dev.detekt*"],"automerge":false}]}`
 - [ ] **Step 5: `licences.md`.** A table of every M0 dependency: name, version, licence, GPL-3.0 compatible? (Y/N + note). The Nothing SDK row: EULA, linked via the §7 exception, never redistributed until permitted.
 - [ ] **Step 6: `threat-model.md`.**
