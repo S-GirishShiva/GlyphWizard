@@ -980,7 +980,7 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
   ```bash
   ./gradlew :glyph-sdk:testSdkFreeDebugUnitTest :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifySdkFreeDebug :glyph-sdk:koverVerifyFullDebug :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest
   ```
-  Now that `:glyph-sdk` has code, add `:glyph-sdk:koverXmlReportSdkFreeDebug` + `glyph-sdk/build/reports/kover/reportSdkFreeDebug.xml` to `scripts/check-tooling-active.sh`, then run it → `OK`. (Task 7 adds the `scripts:` line in `ci-tasks.txt`.)
+  Now that `:glyph-sdk` has code, add `:glyph-sdk:koverXmlReportSdkFreeDebug` + `glyph-sdk/build/reports/kover/reportSdkFreeDebug.xml` to `scripts/check-tooling-active.sh`, then run it → `OK`. (`ci-tasks.txt` is created in Task 7 and already lists it.)
   Slug: `m0-glyph-bridge`.
 
 ### Task 5: Spike app (throwaway): patterns, session, pattern service, listener, adb hooks
@@ -1252,7 +1252,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   full: :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifyFullDebug :glyph-sdk:koverXmlReportFullDebug lintFullDebug
   detekt-full: :glyph-sdk:detektFullDebug
   # tasks the check-*.sh scripts run; listed for verification metadata only
-  scripts: :glyph-sdk:fetchGlyphSdk :glyph-sdk:assembleSdkFreeDebug :app:assembleSdkFreeRelease :app:assembleFullDebug :core:koverXmlReport :agent:koverXmlReport :designsystem:koverXmlReportDebug :glyph-sdk:koverXmlReportSdkFreeDebug :app:koverXmlReportSdkFreeDebug   (the :glyph-sdk entry is added in Task 4)
+  scripts: :glyph-sdk:fetchGlyphSdk :glyph-sdk:assembleSdkFreeDebug :app:assembleSdkFreeRelease :app:assembleFullDebug :core:koverXmlReport :agent:koverXmlReport :designsystem:koverXmlReportDebug :glyph-sdk:koverXmlReportSdkFreeDebug :app:koverXmlReportSdkFreeDebug
   ```
   - **`scripts/ci.sh`:**
   ```bash
