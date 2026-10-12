@@ -58,7 +58,7 @@
   - `Glyph.DEVICE_25111p`
   - permission `com.nothing.ketchum.permission.ENABLE`
 - **Device:** 13×13 grid, 137 LEDs, rows `[5,9,11,11,13,13,13,13,13,11,11,9,5]`.
-- **Coverage (Kover):** `:core`/`:agent` **100%** line; `:glyph-sdk` (sdkFreeDebug), `:designsystem` (debug) and `:app` (sdkFreeDebug) **≥ 80%**. `:spike` is excluded from the gates (throwaway; user confirms in Task 1).
+- **Coverage (Kover):** `:core`/`:agent` **100%** line; `:glyph-sdk` (sdkFreeDebug **and** fullDebug, `SdkMatrixService` excluded), `:designsystem` (debug) and `:app` (sdkFreeDebug) **≥ 80%**. `:spike` is excluded from the gates (throwaway; user confirms in Task 1).
 - **Commits:** `<slug> [Siddanth, Claude] - message`, blank line, details, `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. **Push or tag only after asking the user.**
 - **Modern Kotlin only** (`modern-kotlin-patterns.md`): constructor DI, errors as sealed values, immutable state, minimal *why*-only comments.
 
@@ -273,6 +273,16 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   Kover, per Android module:
   ```kotlin
   kover { reports { variant("sdkFreeDebug") { verify { rule { minBound(80) } } } } }   // designsystem: variant("debug")
+  ```
+  `:glyph-sdk` also gates the `full` code, where the most failure-prone logic (`NothingGlyphDisplay`) lives (review r2 N12):
+  ```kotlin
+  kover {
+      reports {
+          filters { excludes { classes("*.SdkMatrixService") } }   // thin SDK adapter, needs a real device
+          variant("sdkFreeDebug") { verify { rule { minBound(80) } } }
+          variant("fullDebug") { verify { rule { minBound(80) } } }
+      }
+  }
   ```
   `:spike` gets no Kover rule (Task 1 answer 4). `applicationId`: `:app` = `io.github.sgirishshiva.glyphwizard`; `:spike` = `io.github.sgirishshiva.glyphwizard.spike`.
 - [ ] **Step 6: `:app` shell** (replaces Views; constructor DI root, D44):
@@ -517,7 +527,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - **`:app`:** a Robolectric `MainActivityTest` (`@Config(sdk = [36])`) launches it and asserts that the app name is displayed. `AppContainerTest` asserts that `glyphDisplay` is a `GlyphDisplay` (added in Task 4).
 - [ ] **Step 10: Verify.**
   ```bash
-  ./gradlew ktlintCheck lintSdkFreeDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :app:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :app:assembleSdkFreeDebug :spike:assembleSdkFreeDebug
+  ./gradlew ktlintCheck lintSdkFreeDebug :designsystem:lintDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :app:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :app:assembleSdkFreeDebug :spike:assembleSdkFreeDebug
   bash scripts/run-detekt.sh detekt :core:detektMain :agent:detektMain :evals:detektMain
   bash scripts/detekt-canary.sh && bash scripts/guard-banned.sh
   ```
