@@ -3,9 +3,12 @@
 **Updated:** 2026-10-12 · **Branch:** `design/v1-spec` (pushed) · **Last commit:** see `git log -1`
 
 ## Where we are
-The design phase is complete and the spec is approved. The brainstorming flow (superpowers) reached "write the design doc", so the next steps are:
-1. Spec, code guidelines (D45) and CLAUDE.md are in place.
-2. **Spec approved 2026-10-12.** Invoke `superpowers:writing-plans` for **M0 only** ("Foundations & hardware spike"). Plans for M1–M8 are written just in time, after the previous milestone, because each one depends on the last one's results (e.g. M0 measurements).
+- Design is done and the spec is approved.
+- **The M0 plan is final and approved (rev 4, 2026-10-12):** `docs/superpowers/plans/2026-10-12-m0-foundations-spike.md`. Reviews r1–r3 sit beside it. Rev 4 is the last revision; later findings are resolved as `[verify]` items during execution.
+- **Now:** executing M0 **inline** (superpowers:executing-plans), starting at Task 1 (four blocking questions to the user). Check the task checkboxes and `git log` for progress.
+- **Work split:** dev in the main session; reviews, QA and research in subagents.
+- **Java:** JDK 25 daemon and toolchain; Android target 25 (gated, fallback 21); `:core`/`:agent` `-Xjdk-release=17` (to be logged as D5x in Task 2).
+- After M0: the D46 architecture deep-dive (it also covers the convention-plugin question), then the M1 plan.
 
 ## Read these first (in order)
 0. `CLAUDE.md` (auto-loaded) and `docs/engineering/code-guidelines.md`
