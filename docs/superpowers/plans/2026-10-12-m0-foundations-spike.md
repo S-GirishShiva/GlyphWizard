@@ -99,6 +99,7 @@ glyph-sdk/
   src/full/AndroidManifest.xml                       ENABLE permission
   src/test/  src/testSdkFree/  src/testFull/
 app/    GlyphWizardApplication.kt  AppContainer.kt  MainActivity.kt + Robolectric tests
+        src/debug/.../DebugWrap.kt (mirror)  src/release/.../DebugWrap.kt (identity)
 spike/  Patterns.kt  GlyphSession.kt  SpikeCommand.kt  SpikePatternService.kt (specialUse FGS + DUMP-guarded receiver)
         SpikeActivity.kt  SpikeListener.kt  SpikeShortService.kt + tests
 .github/workflows/ci.yml
@@ -277,16 +278,14 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 - [ ] **Step 6: `:app` shell** (replaces Views; constructor DI root, D44):
   ```kotlin
   class GlyphWizardApplication : Application() {
-      lateinit var container: AppContainer
-          private set
-      override fun onCreate() {
-          super.onCreate()
-          container = AppContainer(this)
-      }
+      val container: AppContainer by lazy { AppContainer(this) }
   }
 
   class AppContainer(context: Context) {
-      val glyphDisplay: GlyphDisplay = GlyphDisplays.create(context.applicationContext, MatrixFrameEncoder.forPhone4aPro())
+      val glyphDisplay: GlyphDisplay = wrapForBuild(
+          GlyphDisplays.create(context.applicationContext, MatrixFrameEncoder.forPhone4aPro()),
+          DeviceProfile.Phone4aPro,
+      )
   }
 
   class MainActivity : ComponentActivity() {
@@ -297,7 +296,8 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
       }
   }
   ```
-  `GlyphDisplays`/`MatrixFrameEncoder` come from Task 4. Until Task 4 lands, the container line is added in Task 4 Step 6. Set the theme parent `Theme.GlyphWizard` → `android:Theme.Material.NoActionBar`. In `designsystem`, add `@Composable fun GlyphTheme(content: @Composable () -> Unit) = MaterialTheme(content = content)`, a minimal placeholder that M2 fills from the design-log tokens.
+  - `by lazy`, not `lateinit` (patterns #2, detekt `LateinitUsage`): Android attaches the `Application` before any component can reach `container`, so the first access always sees a ready context.
+  - `GlyphDisplays`/`MatrixFrameEncoder`/`wrapForBuild` come from Task 4. Until Task 4 lands, `AppContainer` is an empty class and the `glyphDisplay` property is added in Task 4 Step 6. Set the theme parent `Theme.GlyphWizard` → `android:Theme.Material.NoActionBar`. In `designsystem`, add `@Composable fun GlyphTheme(content: @Composable () -> Unit) = MaterialTheme(content = content)`, a minimal placeholder that M2 fills from the design-log tokens.
 - [ ] **Step 7: detekt and guards (D47).**
   - **Wiring:** every module (JVM and Android) applies `alias(libs.plugins.detekt)` and sets `detekt { buildUponDefaultConfig = true }`. The plugin reads `config/detekt/detekt.yml` from the root project by default [verify: `./gradlew :core:detekt --info | grep -m1 detekt.yml`; if absent, add `config.setFrom(isolated.rootProject.projectDirectory.file("config/detekt/detekt.yml"))`]. Every rule's default severity is `error`, so any finding fails the task (the canary proves this).
   - **Two kinds of task** (detekt docs: rules that need type resolution "will not run" without it):
@@ -668,7 +668,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 
 ### Task 4: `GlyphDisplay` bridge + durable mirror
 
-**Files:** under `glyph-sdk/src/` per the File structure; modify `app/.../AppContainer.kt`.
+**Files:** under `glyph-sdk/src/` per the File structure; modify `app/.../AppContainer.kt`; create `app/src/debug/.../DebugWrap.kt`, `app/src/release/.../DebugWrap.kt`, `app/src/testDebug/.../AppContainerTest.kt`, `app/src/testRelease/.../AppContainerTest.kt`.
 
 **Interfaces (produces):**
 ```kotlin
@@ -784,7 +784,16 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
   - **Device ID:** `register` receives `encoder.profile.id` (no separate `sdkDeviceId` parameter); `SdkMatrixService` maps it to `Glyph.DEVICE_25111p` in one `when` (Step 4a).
   - **Manifest:** `src/full/AndroidManifest.xml` declares the ENABLE permission. If Task 6 shows `connect()` timing out, add `<queries><package android:name="com.nothing.thirdparty"/></queries>` and record it.
 - [ ] **Step 5: Threading.** `show()` performs a synchronous binder call, so callers must invoke it off the main thread (documented as a one-line KDoc on `show`). The SDK swallows `RemoteException`, so a dead binder is only visible through `onDisconnected`.
-- [ ] **Step 6: Wire `:app`.** `AppContainer` gains `val glyphDisplay = GlyphDisplays.create(context.applicationContext, MatrixFrameEncoder.forPhone4aPro())`. In debug builds, wrap it as `MirroringGlyphDisplay(…) { Log.i("GlyphMirror", it) }` via `if (BuildConfig.DEBUG)`. PNG dumps are deferred to M2 (recorded here).
+- [ ] **Step 6: Wire `:app`.** `AppContainer` gains `glyphDisplay` exactly as in Task 2 Step 6. The mirror is chosen by **build-type source set**, not `BuildConfig` (AGP 9 has `buildFeatures.buildConfig` off by default; review r2 N14):
+  ```kotlin
+  // app/src/debug/kotlin/io/github/sgirishshiva/glyphwizard/DebugWrap.kt
+  internal fun wrapForBuild(display: GlyphDisplay, profile: DeviceProfile): GlyphDisplay =
+      MirroringGlyphDisplay(display, profile) { Log.i("GlyphMirror", it) }
+
+  // app/src/release/kotlin/io/github/sgirishshiva/glyphwizard/DebugWrap.kt
+  internal fun wrapForBuild(display: GlyphDisplay, profile: DeviceProfile): GlyphDisplay = display
+  ```
+  PNG dumps are deferred to M2 (recorded here).
 - [ ] **Step 7: Tests (after).**
   - **`src/test`, `MatrixFrameEncoderTest`:**
     - `LedsOnly` gives size 137
@@ -809,7 +818,7 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
     - `close()` throwing (fake throws `IllegalStateException`) still calls `unbind`
     - `connect()` twice without `release()` → `IllegalStateException`
     The fake is a plain class implementing `MatrixService`; no SDK type is constructed in tests.
-  - **`:app`, `AppContainerTest`:** `glyphDisplay` is non-null; in debug it is a `MirroringGlyphDisplay`.
+  - **`:app`, `AppContainerTest`** (Robolectric): in `src/testDebug`, `glyphDisplay` is a `MirroringGlyphDisplay`; in `src/testRelease`, it is **not** (run by `:app:testSdkFreeReleaseUnitTest`).
 - [ ] **Step 8: Learning asides:**
   - flavour source sets (`src/full`, `src/testFull`)
   - `suspendCancellableCoroutine`, which turns a callback into a suspend call (like a callback feeding a Go channel)
@@ -817,7 +826,7 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
   - binder calls and threads
 - [ ] **Step 9: Run and commit.**
   ```bash
-  ./gradlew :glyph-sdk:testSdkFreeDebugUnitTest :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifySdkFreeDebug :app:testSdkFreeDebugUnitTest
+  ./gradlew :glyph-sdk:testSdkFreeDebugUnitTest :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifySdkFreeDebug :glyph-sdk:koverVerifyFullDebug :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest
   ```
   Slug: `m0-glyph-bridge`.
 
