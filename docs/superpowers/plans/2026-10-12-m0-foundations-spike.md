@@ -1,10 +1,10 @@
-# M0 — Foundations & Hardware Spike Implementation Plan (rev 2)
+# M0 — Foundations & Hardware Spike Implementation Plan (rev 3)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task by task. Steps use checkbox (`- [ ]`) syntax.
 >
 > **Project override (D45):** this project does **not** use TDD. Each task runs: **Step 0 Discover** (read the named files, then state what you reuse, refactor and touch) → implement → write comprehensive tests → run → commit. Mandatory reading: `CLAUDE.md`, `docs/engineering/code-guidelines.md`, `docs/engineering/modern-kotlin-patterns.md`.
 >
-> **Revision note:** rev 2 applies `2026-10-12-m0-plan-review.md` (C1–C2, H1–H12, M1–M19, L1–L10), plus decisions D47 (detekt alpha + mitigations), D48 (immutable collections) and D49 (JUnit 6 + Vintage).
+> **Revision note:** rev 2 applied `2026-10-12-m0-plan-review.md` (C1–C2, H1–H12, M1–M19, L1–L10), plus D47 (detekt alpha + mitigations) and D48 (immutable collections). Rev 3 applies `2026-10-12-m0-plan-review-r2.md` (N1–N17, L1–L6) and D49 as amended (plain JUnit 4 on Android modules).
 
 **Goal:**
 - Turn the template into the real multi-module GlyphWizard project: identity, licence, flavours, CI, Glyph SDK bridge, and a durable debug glyph mirror.
@@ -47,7 +47,7 @@
 - **Flavour dimension `sdk`:** `sdkFree` (`isDefault = true`) and `full`, in `:glyph-sdk`, `:app` and `:spike`.
 - **The Nothing SDK:**
   - never committed; fetched only for `full`
-  - pinned to `https://raw.githubusercontent.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/a65d8e1d13e796919894e54ce43f93d939cdb34c/glyph-matrix-sdk-2.0.aar`, SHA-256 `be00ee9cd7115f6b11984c6e31fe98e298fb726940d1555063610685ef3bbf29`
+  - pinned in `gradle.properties` (`glyphSdk.url`, `glyphSdk.sha256`) to `https://raw.githubusercontent.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/a65d8e1d13e796919894e54ce43f93d939cdb34c/glyph-matrix-sdk-2.0.aar`, SHA-256 `be00ee9cd7115f6b11984c6e31fe98e298fb726940d1555063610685ef3bbf29`
   - **No APK containing it is ever attached to any release** (D26).
 - **SDK facts (verified with javap):**
   - package `com.nothing.ketchum`
@@ -181,14 +181,14 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   | `ktlint-gradle` | `org.jlleitschuh.gradle.ktlint` | stable |
   | `compose-rules-ktlint` | `io.nlopez.compose.rules:ktlint` | stable |
   | `compose-bom` | `androidx.compose:compose-bom` | stable (verify: the pattern doc marked it [U]) |
-  | `activity-compose`, `lifecycle-runtime-ktx` | androidx | stable |
+  | `activity-compose`, `lifecycle-runtime-ktx`, `lifecycle-service` | androidx | stable (`lifecycle-*` share one version) |
   | `coroutines-core`, `coroutines-test`, `coroutines-android` | `org.jetbrains.kotlinx:kotlinx-coroutines-*` | 1.11.0 |
   | `junit-bom`, `junit-jupiter`, `junit-platform-launcher` | `org.junit:*` | JUnit **6.x** stable (D49); jupiter and launcher take no version (BOM). JVM modules only |
   | `junit4` | `junit:junit` | 4.13.2 |
   | `robolectric` | `org.robolectric:robolectric` | stable supporting SDK 36 (record which SDK) |
   | `compose-ui-test-junit4` | via BOM | — |
   | `kotlin-test` | `org.jetbrains.kotlin:kotlin-test` | `version.ref = kotlin` |
-- [ ] **Step 2: Root `build.gradle.kts`.** Apply `false` for `android-application`, `android-library`, `kotlin-jvm`, `kotlin-compose`, `kover`, `detekt` and `ktlint-gradle`. Configure ktlint for all projects via `subprojects { apply(plugin = "org.jlleitschuh.gradle.ktlint") }`, adding `ktlintRuleset(libs.compose.rules.ktlint)` for Compose modules. `.editorconfig`:
+- [ ] **Step 2: Root `build.gradle.kts`.** Apply `false` for `android-application`, `android-library`, `kotlin-jvm`, `kotlin-compose`, `kover`, `detekt` and `ktlint-gradle`. No `subprojects {}`/`allprojects {}` (cross-project configuration breaks isolated projects; review r2 L3): every module applies `alias(libs.plugins.ktlint.gradle)` in its own `plugins {}`, and Compose modules add `ktlintRuleset(libs.compose.rules.ktlint)` to their `dependencies {}` (the type-safe accessor exists there because the plugin is applied in that script). `.editorconfig`:
   ```
   root = true
   [*.{kt,kts}]
@@ -203,7 +203,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   The canary holds deliberate violations, so normal builds never see it (Step 7).
 - [ ] **Step 4: JVM modules** `core`, `agent`, `evals`:
   ```kotlin
-  plugins { alias(libs.plugins.kotlin.jvm); alias(libs.plugins.kover); alias(libs.plugins.detekt) }
+  plugins { alias(libs.plugins.kotlin.jvm); alias(libs.plugins.kover); alias(libs.plugins.detekt); alias(libs.plugins.ktlint.gradle) }
   kotlin { jvmToolchain(17) }
   detekt { buildUponDefaultConfig = true }
   dependencies {
@@ -255,7 +255,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
       }
   }
   ```
-- [ ] **Step 5: Android modules.** `designsystem`, `glyph-sdk`, `app` and `spike` each use `alias(libs.plugins.android.library)` (or `application`) plus `kover` and `detekt` (with `detekt { buildUponDefaultConfig = true }`), and Compose modules add `alias(libs.plugins.kotlin.compose)`. Set the namespace from the Global Constraints, the `compileSdk { version = release(37) }` DSL, `minSdk = 35`, `compileOptions` with Java 17, and `testOptions.unitTests.isIncludeAndroidResources = true`. Flavours, in `glyph-sdk`, `app` and `spike`:
+- [ ] **Step 5: Android modules.** `designsystem`, `glyph-sdk`, `app` and `spike` each use `alias(libs.plugins.android.library)` (or `application`) plus `kover`, `ktlint-gradle` and `detekt` (with `detekt { buildUponDefaultConfig = true }`), and Compose modules add `alias(libs.plugins.kotlin.compose)`. Set the namespace from the Global Constraints, the `compileSdk { version = release(37) }` DSL, `minSdk = 35`, `compileOptions` with Java 17, and `testOptions.unitTests.isIncludeAndroidResources = true`. Flavours, in `glyph-sdk`, `app` and `spike`:
   ```kotlin
   flavorDimensions += "sdk"
   productFlavors {
@@ -537,7 +537,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
 
 ### Task 3: Glyph SDK fetch (full only, pinned, configuration-cache safe)
 
-**Files:** Modify `settings.gradle.kts`, `glyph-sdk/build.gradle.kts`, `app/build.gradle.kts`, `spike/build.gradle.kts`, `gradle/libs.versions.toml` (`glyphSdkUrl`, `glyphSdkSha256`); create `build-logic/` (`settings.gradle.kts`, `build.gradle.kts`, `FetchGlyphSdk.kt`, `GlyphSdkFetchPlugin.kt`) and `scripts/check-glyph-sdk-fetch.sh`.
+**Files:** Modify `settings.gradle.kts`, `glyph-sdk/build.gradle.kts`, `app/build.gradle.kts`, `spike/build.gradle.kts`, `gradle.properties` (`glyphSdk.url`, `glyphSdk.sha256`); create `build-logic/` (`settings.gradle.kts`, `build.gradle.kts`, `FetchGlyphSdk.kt`, `GlyphSdkFetchPlugin.kt`) and `scripts/check-glyph-sdk-fetch.sh`.
 
 **Interfaces (produces):** plugin `glyphwizard.glyph-sdk-fetch`; task `:glyph-sdk:fetchGlyphSdk`; extension `glyphSdkAar: FileCollection` (built by the task); consumable configuration `:glyph-sdk` → `glyphSdk`. `:glyph-sdk` compiles against the SDK only in `full`; `:app`/`:spike` package it in `full`.
 
@@ -546,7 +546,12 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   curl -fsSL "https://api.github.com/repos/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/commits?path=glyph-matrix-sdk-2.0.aar&per_page=1" | grep -m1 '"sha"'
   curl -fsSL -o "$SCRATCH/g.aar" "https://raw.githubusercontent.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/a65d8e1d13e796919894e54ce43f93d939cdb34c/glyph-matrix-sdk-2.0.aar" && sha256sum "$SCRATCH/g.aar"
   ```
-  Expect `be00ee9c…bf29`. Write `glyphSdkUrl` and `glyphSdkSha256` into `[versions]`.
+  Expect `be00ee9c…bf29`. Write both into `gradle.properties` (they are not versions, so not the catalog; review r2 L5):
+  ```properties
+  glyphSdk.url=https://raw.githubusercontent.com/Nothing-Developer-Programme/GlyphMatrix-Developer-Kit/a65d8e1d13e796919894e54ce43f93d939cdb34c/glyph-matrix-sdk-2.0.aar
+  glyphSdk.sha256=be00ee9cd7115f6b11984c6e31fe98e298fb726940d1555063610685ef3bbf29
+  ```
+  A `-PglyphSdk.url=…` / `-PglyphSdk.sha256=…` on the command line overrides them (the fetch tests use this).
 - [ ] **Step 1: Implement** the fetch as a plugin in the included build `build-logic/` (review r2 N2: a task class declared inside a `build.gradle.kts` compiles as an inner class of the script, which Gradle can't instantiate or configuration-cache).
   - `settings.gradle.kts` (root): add `pluginManagement { includeBuild("build-logic") }` above the existing `pluginManagement` content (merge into the same block).
   - `build-logic/settings.gradle.kts`:
@@ -1081,7 +1086,15 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
 
 **Files:** Create `.github/workflows/ci.yml`, `scripts/ci-tasks.txt`, `scripts/ci.sh`, `scripts/check-sdkfree-apk.sh`, `renovate.json`, `docs/engineering/threat-model.md`, `docs/engineering/licences.md`; modify `gradle/verification-metadata.xml` and `README.md`.
 
-- [ ] **Step 0: Discover.** Read every script from Tasks 2–3 and the README. Look up the current commit SHAs of `actions/checkout`, `actions/setup-java` and `gradle/actions/setup-gradle` via `curl -fsSL https://api.github.com/repos/<owner>/<repo>/releases/latest` (no `gh`).
+- [ ] **Step 0: Discover.** Read every script from Tasks 2–3 and the README. Look up the commit SHAs of `actions/checkout`, `actions/setup-java` and `gradle/actions/setup-gradle` with `curl` (no `gh`). `releases/latest` gives a tag name, not a SHA (review r2 L2), so resolve it:
+  ```bash
+  repo=actions/checkout   # then actions/setup-java, gradle/actions
+  tag=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | grep -m1 '"tag_name"' | cut -d'"' -f4)
+  curl -fsSL "https://api.github.com/repos/$repo/git/ref/tags/$tag"   # note object.type and object.sha
+  # object.type "commit" → object.sha is the pin; "tag" (annotated) → dereference once more:
+  curl -fsSL "https://api.github.com/repos/$repo/git/tags/<object.sha>"   # its object.sha is the commit
+  ```
+  Pin as `uses: <repo>@<commit-sha> # <tag>`.
 - [ ] **Step 1: `scripts/check-sdkfree-apk.sh`.** Every `grep -q` reads a file, never a pipe: under `pipefail`, an early `grep -q` match kills the producer with SIGPIPE and the pipeline's non-zero status would skip `&& fail` (review r2 N5). Permissions come from `aapt2`, because the APK manifest is binary XML that `strings` can miss (N11).
   ```bash
   #!/usr/bin/env bash
@@ -1151,7 +1164,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
     - **`detekt`:** `bash scripts/ci.sh detekt && bash scripts/detekt-canary.sh`. `run-detekt.sh` (Task 2 Step 7) decides from the SARIF reports: exit 1 + "detekt findings: …" or exit 2 + "detekt crashed: tool error, not findings". Gradle's own exit code is never interpreted.
     - **`full-build`:** `bash scripts/check-glyph-sdk-fetch.sh && bash scripts/check-sdkfree-apk.sh && bash scripts/ci.sh full`
 - [ ] **Step 3: Dependency verification** (after the plugin set is final): `bash scripts/ci.sh verification-metadata`. Commit `gradle/verification-metadata.xml`, and put the same command in the README "Updating dependencies" section. [verify] that the included build `build-logic` is covered by the root file: after the run, `grep -c 'kotlin-dsl\|gradle-kotlin-dsl' gradle/verification-metadata.xml` is non-zero, and `./gradlew --refresh-dependencies :glyph-sdk:fetchGlyphSdk` passes verification; if not, record what Gradle requires for included builds and follow it.
-- [ ] **Step 4: `renovate.json`.** `{"extends":["config:recommended"],"enabledManagers":["gradle","github-actions"],"ignoreDeps":["glyphSdkUrl","glyphSdkSha256"],"packageRules":[{"matchPackageNames":["dev.detekt*"],"automerge":false}]}`
+- [ ] **Step 4: `renovate.json`.** `{"extends":["config:recommended"],"enabledManagers":["gradle","github-actions"],"packageRules":[{"matchPackageNames":["dev.detekt*"],"automerge":false}]}`
 - [ ] **Step 5: `licences.md`.** A table of every M0 dependency: name, version, licence, GPL-3.0 compatible? (Y/N + note). The Nothing SDK row: EULA, linked via the §7 exception, never redistributed until permitted.
 - [ ] **Step 6: `threat-model.md`.**
   - **Assets:** API keys (future), animations, notification content, the device panel.
@@ -1192,3 +1205,15 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
 - **M17:** the spike's exemptions are now a user decision (Task 1 answer 4) instead of an assumption.
 - **L8:** `DeviceProfile`/`TextGrid` are marked provisional for D46.
 - **Rejected: none.**
+
+## Review responses (rev 2 → rev 3, review r2)
+- **N1:** `:glyph-sdk` uses `fullCompileOnly` + `testFullImplementation`; `:app`/`:spike` use `fullRuntimeOnly` via the `glyphSdk` consumable configuration (Task 3 Step 1). AGP's acceptance of that shape is marked [verify] with a fallback.
+- **N2:** `FetchGlyphSdk` lives in the included build `build-logic/` as plugin `glyphwizard.glyph-sdk-fetch`; helpers are members using `java.util.HexFormat`; a configuration-cache reuse check is in Task 3 Step 2.
+- **N3/N6:** concrete `detekt.yml`; type-resolved `detektMain` tasks; `:detekt-canary` JVM module behind `-PwithCanary` expecting `UnsafeCallOnNullableType`, `GlobalCoroutineUsage`, `ForbiddenMethodCall`; mutable `object` checked by `guard-banned.sh`; `run-detekt.sh` classifies by SARIF and is tested on both paths. Android type resolution stays [verify] (detekt #9402).
+- **N4:** option (a), D49 amended: plain JUnit 4 + Robolectric on Android modules.
+- **N5/N11:** file-based `grep`, `aapt2 dump permissions`, positive controls for classes and permission, vacuous classpath check replaced.
+- **N7:** `NothingGlyphDisplay` given in full with atomic flags, single resume, re-connectable `release`, unbind on rejection and on `close` failure. `GlyphException` mapping moved into `SdkMatrixService` so only the adapter touches `com.nothing.*`.
+- **N8/N17:** patterns run in a `specialUse` debug FGS (`SpikePatternService`) that also owns the receiver; `SpikeShortService` runs until `onTimeout` and is only the §10 interplay probe; whether the app matrix survives without a visible Activity is a recorded measurement.
+- **N9, N10, N12–N16:** as specified (`by lazy`; full listener XML; `fullDebug` Kover gate; `:designsystem:lintDebug`; `src/debug`/`src/release` `wrapForBuild`; `scripts/ci-tasks.txt` + `scripts/ci.sh`; `GlyphSession` with `profile`, `TimeSource.WithComparableMarks` and absolute deadlines).
+- **L1–L6:** `SdkMatrixService` given (Step 4a); `setGlyphMatrixTimeout` exposed as `GlyphDisplay.setAutoTimeout` instead of a spike-only extension; tag → commit SHA lookup; per-module ktlint plugin; device ID from `encoder.profile.id`; SDK URL/SHA in `gradle.properties`; tests no longer construct `GlyphException`.
+- **Rejected: none.** Deviation: L1's auto-timeout became a `GlyphDisplay` method (durable) rather than a spike-only hook, since §10 needs the behaviour and the spike can only reach `:glyph-sdk` through `GlyphDisplay`.
