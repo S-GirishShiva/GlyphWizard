@@ -20,7 +20,7 @@
 **Tech stack:**
 - Kotlin 2.4.21; AGP 9 with built-in Kotlin; Gradle 9.6 (wrapper present); JDK 17 toolchain.
 - Compose, with the `org.jetbrains.kotlin.plugin.compose` plugin per Compose module.
-- JUnit 6 Jupiter on JVM modules; JUnit 4 + Robolectric (Vintage engine) on Android modules (D49).
+- JUnit 6 Jupiter on JVM modules; plain JUnit 4 + Robolectric on Android modules, no Vintage engine and no JUnit Platform (D49 as amended per review r2 N4).
 - Kover ≥ 0.9.11; ktlint (`org.jlleitschuh.gradle.ktlint`) + compose-rules; detekt `dev.detekt` 2.0.0-alpha.N pinned (D47); GitHub Actions.
 
 **Spec:** `docs/superpowers/specs/2026-10-12-glyphwizard-v1-design.md` (§2, §7, §8 M0, §9, §10).
@@ -179,7 +179,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   | `compose-bom` | `androidx.compose:compose-bom` | stable (verify: the pattern doc marked it [U]) |
   | `activity-compose`, `lifecycle-runtime-ktx` | androidx | stable |
   | `coroutines-core`, `coroutines-test`, `coroutines-android` | `org.jetbrains.kotlinx:kotlinx-coroutines-*` | 1.11.0 |
-  | `junit-bom`, `junit-jupiter`, `junit-platform-launcher`, `junit-vintage-engine` | `org.junit:*` | JUnit **6.x** stable (D49); jupiter, launcher and vintage take no version (BOM) |
+  | `junit-bom`, `junit-jupiter`, `junit-platform-launcher` | `org.junit:*` | JUnit **6.x** stable (D49); jupiter and launcher take no version (BOM). JVM modules only |
   | `junit4` | `junit:junit` | 4.13.2 |
   | `robolectric` | `org.robolectric:robolectric` | stable supporting SDK 36 (record which SDK) |
   | `compose-ui-test-junit4` | via BOM | — |
@@ -264,7 +264,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - `app` → `implementation(project(":core"))`, `implementation(project(":designsystem"))`, `implementation(project(":glyph-sdk"))`
   - `spike` → `implementation(project(":core"))`, `implementation(project(":glyph-sdk"))`
   - Compose: `implementation(platform(libs.compose.bom))` plus ui, material3 and `activity-compose`
-  - tests: `testImplementation(libs.junit4)`, `testImplementation(libs.robolectric)`, `testRuntimeOnly(libs.junit.vintage.engine)`, `testImplementation(libs.compose.ui.test.junit4)`
+  - tests: `testImplementation(libs.junit4)`, `testImplementation(libs.robolectric)`, `testImplementation(libs.kotlin.test)`, `testImplementation(libs.compose.ui.test.junit4)` (Compose modules), `testImplementation(libs.coroutines.test)` (`:glyph-sdk`, `:spike`). AGP runs these with its JUnit 4 runner directly: no `useJUnitPlatform()`, no Vintage (JUnit 6 deprecated it), no JUnit BOM on Android modules (D49).
 
   Kover, per Android module:
   ```kotlin
@@ -874,22 +874,41 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`.
 **Files:** Create `.github/workflows/ci.yml`, `scripts/check-sdkfree-apk.sh`, `renovate.json`, `docs/engineering/threat-model.md`, `docs/engineering/licences.md`; modify `gradle/verification-metadata.xml` and `README.md`.
 
 - [ ] **Step 0: Discover.** Read every script from Tasks 2–3 and the README. Look up the current commit SHAs of `actions/checkout`, `actions/setup-java` and `gradle/actions/setup-gradle` via `curl -fsSL https://api.github.com/repos/<owner>/<repo>/releases/latest` (no `gh`).
-- [ ] **Step 1: `scripts/check-sdkfree-apk.sh`.**
+- [ ] **Step 1: `scripts/check-sdkfree-apk.sh`.** Every `grep -q` reads a file, never a pipe: under `pipefail`, an early `grep -q` match kills the producer with SIGPIPE and the pipeline's non-zero status would skip `&& fail` (review r2 N5). Permissions come from `aapt2`, because the APK manifest is binary XML that `strings` can miss (N11).
   ```bash
   #!/usr/bin/env bash
   set -euo pipefail
   fail() { echo "FAIL: $*" >&2; exit 1; }
-  ./gradlew -q :app:dependencies --configuration sdkFreeReleaseRuntimeClasspath | grep -q glyph-matrix-sdk && fail "SDK on sdkFree classpath"
-  ./gradlew -q :app:assembleSdkFreeDebug
-  d=$(mktemp -d); unzip -qo app/build/outputs/apk/sdkFree/debug/*.apk 'classes*.dex' AndroidManifest.xml -d "$d"
-  for f in "$d"/classes*.dex; do strings "$f"; done | grep -q 'Lcom/nothing/' && fail "SDK classes in sdkFree"
-  grep -q 'com.nothing.ketchum.permission.ENABLE' <(strings "$d/AndroidManifest.xml") && fail "ENABLE permission in sdkFree"
-  # positive control: the full build MUST contain the SDK
+  sdk=${ANDROID_HOME:-$HOME/Android/Sdk}
+  bt=$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+  aapt2="$bt/aapt2"
+  test -x "$aapt2" || fail "aapt2 not found under $sdk/build-tools"
+  one_apk() { mapfile -t apks < <(find "$1" -name '*.apk' -type f); [ "${#apks[@]}" -eq 1 ] || fail "expected one APK in $1, got ${#apks[@]}"; echo "${apks[0]}"; }
+  inspect() { # <apk> <out-dir>: dex strings and permissions into files
+    unzip -qo "$1" 'classes*.dex' -d "$2"
+    strings "$2"/classes*.dex > "$2/strings.txt"
+    "$aapt2" dump permissions "$1" > "$2/permissions.txt"
+  }
+
+  rm -rf glyph-sdk/libs
+  ./gradlew -q :app:assembleSdkFreeRelease
+  test ! -e glyph-sdk/libs || fail "sdkFree build fetched the SDK"
+  apk=$(one_apk app/build/outputs/apk/sdkFree/release)   # a plain assignment, so set -e sees one_apk fail
+  d=$(mktemp -d); inspect "$apk" "$d"
+  grep -q 'Lcom/nothing/' "$d/strings.txt" && fail "SDK classes in sdkFree"
+  grep -q 'com.nothing.ketchum.permission.ENABLE' "$d/permissions.txt" && fail "ENABLE permission in sdkFree"
+
+  # positive control: the full build MUST contain both, or the checks above prove nothing
   ./gradlew -q :app:assembleFullDebug
-  e=$(mktemp -d); unzip -qo app/build/outputs/apk/full/debug/*.apk 'classes*.dex' -d "$e"
-  for f in "$e"/classes*.dex; do strings "$f"; done | grep -q 'Lcom/nothing/ketchum/' || fail "control: full lacks SDK"
+  apk=$(one_apk app/build/outputs/apk/full/debug)
+  e=$(mktemp -d); inspect "$apk" "$e"
+  grep -q 'Lcom/nothing/ketchum/' "$e/strings.txt" || fail "control: full lacks SDK classes"
+  grep -q 'com.nothing.ketchum.permission.ENABLE' "$e/permissions.txt" || fail "control: full lacks ENABLE permission"
   echo OK
   ```
+  - The old `:app:dependencies | grep glyph-matrix-sdk` check is gone: a `files(…)` dependency never appears in that report, so it could not fail. "No `glyph-sdk/libs/` after a clean sdkFree release build" replaces it.
+  - `strings` stays for the dex files: dex string pools are MUTF-8, so ASCII type descriptors like `Lcom/nothing/…` are visible to it.
+  - Apply the same rule to every script in this plan: `grep -q` reads a file or a here-string (`<<<"$out"`), never a pipe.
 - [ ] **Step 2: `ci.yml`.** Triggers on push and PR. Uses `ubuntu-latest` and Temurin 17. Actions are pinned by full SHA. `permissions: contents: read`. Jobs:
   - **`checks`:**
     ```bash
