@@ -241,7 +241,10 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   ```
   `:core` and `:agent` also get the Android API guard (Global Constraints, Java versions):
   ```kotlin
+  import org.jetbrains.kotlin.gradle.dsl.JvmTarget   // top of the script; not a Kotlin DSL default import
+
   java { targetCompatibility = JavaVersion.VERSION_17 }
+  tasks.withType<JavaCompile>().configureEach { options.release = 17 }   // also caps any future Java sources
   kotlin {
       compilerOptions {
           jvmTarget = JvmTarget.JVM_17
@@ -291,7 +294,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
       }
   }
   ```
-- [ ] **Step 5: Android modules.** `designsystem`, `glyph-sdk`, `app` and `spike` each use `alias(libs.plugins.android.library)` (or `application`) plus `kover`, `ktlint-gradle` and `detekt` (with `detekt { buildUponDefaultConfig = true }`), and Compose modules add `alias(libs.plugins.kotlin.compose)`. Set the namespace from the Global Constraints, the `compileSdk { version = release(37) }` DSL, `minSdk = 35`, `compileOptions` with `JavaVersion.VERSION_25` (source and target), `kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_25 } }`, **no toolchain** (Robolectric runs on the daemon JDK 25; review r3 R-H1), `ktlint { version = libs.versions.ktlint.get() }`, and `testOptions.unitTests.isIncludeAndroidResources = true`. The plain `detekt` task only scans `src/{main,test}/{java,kotlin}`, so flavour and build-type sets are added explicitly (the `src/<set>/kotlin` dirs that exist in the module, e.g. `detekt { source.from("src/sdkFree/kotlin", "src/full/kotlin", "src/debug/kotlin", "src/release/kotlin", "src/testSdkFree/kotlin", "src/testFull/kotlin") }`). Flavours, in `glyph-sdk`, `app` and `spike`:
+- [ ] **Step 5: Android modules.** `designsystem`, `glyph-sdk`, `app` and `spike` each use `alias(libs.plugins.android.library)` (or `application`) plus `kover`, `ktlint-gradle` and `detekt` (with `detekt { buildUponDefaultConfig = true }`), and Compose modules add `alias(libs.plugins.kotlin.compose)`. Set the namespace from the Global Constraints, the `compileSdk { version = release(37) }` DSL, `minSdk = 35`, `compileOptions` with `JavaVersion.VERSION_25` (source and target), `kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_25 } }` (with `import org.jetbrains.kotlin.gradle.dsl.JvmTarget` at the top of the script), **no toolchain** (Robolectric runs on the daemon JDK 25; review r3 R-H1), `ktlint { version = libs.versions.ktlint.get() }`, and `testOptions.unitTests.isIncludeAndroidResources = true`. The plain `detekt` task only scans `src/{main,test}/{java,kotlin}`, so flavour and build-type sets are added explicitly (the `src/<set>/kotlin` dirs that exist in the module, e.g. `detekt { source.from("src/sdkFree/kotlin", "src/full/kotlin", "src/debug/kotlin", "src/release/kotlin", "src/testSdkFree/kotlin", "src/testFull/kotlin") }`). Flavours, in `glyph-sdk`, `app` and `spike`:
   ```kotlin
   flavorDimensions += "sdk"
   productFlavors {
@@ -561,10 +564,9 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
     grep -q 'ktlintMainSourceSetCheck' "$out/$m.txt" || fail ":$m has no ktlint main source-set task"
   done
   ./gradlew -q :core:koverXmlReport :agent:koverXmlReport :designsystem:koverXmlReportDebug \
-    :glyph-sdk:koverXmlReportSdkFreeDebug :app:koverXmlReportSdkFreeDebug
+    :app:koverXmlReportSdkFreeDebug
   for r in core/build/reports/kover/report.xml agent/build/reports/kover/report.xml \
-           designsystem/build/reports/kover/reportDebug.xml glyph-sdk/build/reports/kover/reportSdkFreeDebug.xml \
-           app/build/reports/kover/reportSdkFreeDebug.xml; do
+           designsystem/build/reports/kover/reportDebug.xml app/build/reports/kover/reportSdkFreeDebug.xml; do
     test -f "$r" || fail "missing $r"
     # the report-level LINE counter is the last one in the file
     grep -o '<counter type="LINE" missed="[0-9]*" covered="[0-9]*"/>' "$r" > "$out/lines.txt" || fail "no LINE counter in $r"
@@ -573,6 +575,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   done
   echo OK
   ```
+  `:glyph-sdk` has no code until Task 4, so Task 4 Step 9 adds `:glyph-sdk:koverXmlReportSdkFreeDebug` and its report to this script, and to the `scripts:` line of `ci-tasks.txt` in the same commit.
   [verify] the report file names and the ktlint task name against the pinned versions on the first run, and fix the script, not the check, if they differ. In the full-flavour CI job, also check `glyph-sdk/build/reports/kover/reportFullDebug.xml` the same way.
 - [ ] **Step 8: Learning asides** in `docs/learning/m0.md`, 2–4 sentences each plus a link:
   - Gradle modules (like Go modules / packages in one repo)
@@ -600,7 +603,7 @@ docs/research/hardware-spike-results.md  docs/engineering/threat-model.md  docs/
   - **`:agent`:** `AgentModuleTest` asserts `NAME`.
   - **`:evals`:** `MainTest` captures stdout of `main()`.
   - **`:designsystem`:** a Robolectric `GlyphThemeTest` renders `GlyphTheme { Text("x") }` and asserts that the node exists.
-  - **`:app`:** a Robolectric `MainActivityTest` (`@Config(sdk = [36])`) launches it and asserts that the app name is displayed. `AppContainerTest` asserts that `glyphDisplay` is a `GlyphDisplay` (added in Task 4).
+  - **`:app`:** a Robolectric `MainActivityTest` (`@Config(sdk = [36])`, using `createAndroidComposeRule<MainActivity>()`, not `createComposeRule()`, because it also runs under `testSdkFreeReleaseUnitTest`, where `ui-test-manifest` is absent) launches it and asserts that the app name is displayed. `AppContainerTest` asserts that `glyphDisplay` is a `GlyphDisplay` (added in Task 4).
   - **Canaries, run once and recorded in the commit message (not kept as files):**
     - JDK API guard (Review Focus 10): a temporary `core/src/main/kotlin/…/Tmp.kt` calling `Thread.ofVirtual()` (Java 21, no Kotlin equivalent) → `:core:compileKotlin` **fails**; delete it.
     - Explicit backing fields (patterns §1.2 "[U] once ktlint/detekt parse it in M0"; review r3 R-M7): a temporary `core/src/main/kotlin/…/Tmp.kt` with `val s: StateFlow<Int>` + `field = MutableStateFlow(0)` (add `coroutines-core` to `:core` only for this check) → `./gradlew :core:ktlintCheck` and `bash scripts/run-detekt.sh :core:detekt :core:detektMain` are clean; delete it. Record the result in patterns §1.2 (drop the [U]). If either tool fails, Task 5 uses the `_x`/`x` pair and §1.2 records why.
@@ -977,6 +980,7 @@ object GlyphDisplays { fun create(context: Context, encoder: MatrixFrameEncoder)
   ```bash
   ./gradlew :glyph-sdk:testSdkFreeDebugUnitTest :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifySdkFreeDebug :glyph-sdk:koverVerifyFullDebug :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest
   ```
+  Now that `:glyph-sdk` has code, add `:glyph-sdk:koverXmlReportSdkFreeDebug` + `glyph-sdk/build/reports/kover/reportSdkFreeDebug.xml` to `scripts/check-tooling-active.sh`, then run it → `OK`. (Task 7 adds the `scripts:` line in `ci-tasks.txt`.)
   Slug: `m0-glyph-bridge`.
 
 ### Task 5: Spike app (throwaway): patterns, session, pattern service, listener, adb hooks
@@ -1044,11 +1048,11 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
           }
       }
 
-      fun stop() {
+      fun stop(): Job {
           val running = loop
           loop = null
           // show() is a blocking binder call: release only after the in-flight frame finishes (review r3 R-M3)
-          scope.launch(dispatcher) {
+          return scope.launch(dispatcher) {
               running?.cancelAndJoin()
               display.release()
           }
@@ -1072,7 +1076,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   - `onCreate`: `startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)`; register `SpikeReceiver` (an inner `BroadcastReceiver` that parses with `SpikeCommand.from` and calls `handle`) via `ContextCompat.registerReceiver(this, receiver, filter, Manifest.permission.DUMP, null, ContextCompat.RECEIVER_EXPORTED)`. Only callers holding DUMP (the adb shell) can reach it.
   - `onStartCommand`: the Activity's commands arrive as intents → `SpikeCommand.from(intent.action, intent.extras)` → `handle`.
   - **Serialised commands** (review r3 R-M5): the receiver and `onStartCommand` only `trySend` into a `Channel<SpikeCommand>(Channel.UNLIMITED)`. One coroutine in `lifecycleScope` consumes it, so two quick `SHOW`s can never race two `connect()`s.
-  - `handle(Show)`: if `(layout, maxValue)` differs from the current session's, `stop()` it and build a new one: `MirroringGlyphDisplay(GlyphDisplays.create(this, MatrixFrameEncoder(profile, layout, maxValue)), profile) { Log.i("GlyphMirror", it) }`, then `connect()`. **Only on `Ok`** call `session.start(pattern, fps)`; on `Err`, log it under `SpikeStatus` and play nothing. `Stop` → `session.stop()`, `stopSelf()`. `Dump` → logs. `AutoTimeout` → `display.setAutoTimeout`. `Short` → `startForegroundService(Intent(this, SpikeShortService::class.java))`.
+  - `handle(Show)`: if `(layout, maxValue)` differs from the current session's, `stop()` it and build a new one: `MirroringGlyphDisplay(GlyphDisplays.create(this, MatrixFrameEncoder(profile, layout, maxValue)), profile) { Log.i("GlyphMirror", it) }`, then `connect()`. The old session's `stop().join()` completes first, so its `closeAppMatrix` can't blank the new display. **Only on `Ok`** call `session.start(pattern, fps)`; on `Err`, log it under `SpikeStatus` and play nothing. `Stop` → `session.stop()`, `stopSelf()`. `Dump` → logs. `AutoTimeout` → `display.setAutoTimeout`. `Short` → `startForegroundService(Intent(this, SpikeShortService::class.java))`.
   - Wiring lives in a small `SpikeContainer(context, dispatcher: CoroutineDispatcher = Dispatchers.Default, timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic)`, the spike's composition root (default parameter values are where detekt `InjectDispatcher` allows a named dispatcher).
   - The container also owns `appScope = CoroutineScope(SupervisorJob() + dispatcher)` (process lifetime, the patterns doc's injected `applicationScope`). `GlyphSession` receives `appScope`, **not** `lifecycleScope`: `onDestroy` cancels `lifecycleScope`, which would cancel `stop()`'s pending `release()` and leave the matrix lit.
   - `onDestroy`: unregister the receiver, `session.stop()`.
@@ -1130,7 +1134,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   - **`GlyphSessionTest`** (`runTest`, fake `GlyphDisplay`, `StandardTestDispatcher(testScheduler)`, `testScheduler.timeSource`, `backgroundScope`):
     - `start(…, 50)` → 50 ± 1 `show` calls per virtual second, and `achievedFps` within 1 of 50
     - `start(…, 120)` → 120 ± 1 calls per virtual second (no drift from the 8.33 ms period)
-    - `stop()` → no further `show` calls, and `release` is called once, **after** the last `show` (the fake records the call order)
+    - `stop()`, then `testScheduler.runCurrent()` (the release is queued on the test dispatcher) → no further `show` calls, and `release` is called once, **after** the last `show` (the fake records the call order); the returned `Job` is completed
     - a second `start` cancels the first loop
     - an `Err` from `show` lands in `lastResult`
     - `fps = 0` throws
@@ -1248,7 +1252,7 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   full: :glyph-sdk:testFullDebugUnitTest :glyph-sdk:koverVerifyFullDebug :glyph-sdk:koverXmlReportFullDebug lintFullDebug
   detekt-full: :glyph-sdk:detektFullDebug
   # tasks the check-*.sh scripts run; listed for verification metadata only
-  scripts: :glyph-sdk:fetchGlyphSdk :glyph-sdk:assembleSdkFreeDebug :app:assembleSdkFreeRelease :app:assembleFullDebug :core:koverXmlReport :agent:koverXmlReport :designsystem:koverXmlReportDebug :glyph-sdk:koverXmlReportSdkFreeDebug :app:koverXmlReportSdkFreeDebug
+  scripts: :glyph-sdk:fetchGlyphSdk :glyph-sdk:assembleSdkFreeDebug :app:assembleSdkFreeRelease :app:assembleFullDebug :core:koverXmlReport :agent:koverXmlReport :designsystem:koverXmlReportDebug :glyph-sdk:koverXmlReportSdkFreeDebug :app:koverXmlReportSdkFreeDebug   (the :glyph-sdk entry is added in Task 4)
   ```
   - **`scripts/ci.sh`:**
   ```bash
@@ -1354,3 +1358,12 @@ Plus `spike/src/main/AndroidManifest.xml` and tests under `spike/src/test/`. Cat
   - No repeat `startForeground` is needed for an already-foreground service (AOSP `ActiveServices`).
 - **Recorded, not fixed:** about 4 lines of quality wiring repeated per module. Convention plugin → D46 deep-dive agenda.
 - **Rejected: none.**
+- **Spot check (subagent, after rev 4):** fixed 3 blockers in place:
+  - `:glyph-sdk` Kover check moved to Task 4;
+  - `JvmTarget` import;
+  - `runCurrent()` after `stop()`.
+
+  Also adopted:
+  - `stop(): Job` joined before a new display connects;
+  - `createAndroidComposeRule` in `MainActivityTest`;
+  - `JavaCompile.options.release = 17` on `:core`/`:agent`.
