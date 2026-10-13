@@ -70,6 +70,28 @@ Vendor Glyph properties (`adb shell getprop | grep -i glyph`) [measured 2026-10-
 - **Implication for the editor (spec §5, UI11):** of 0–255, roughly 17–~110 carries most visible differences; levels 1–16 render as off. Decide in M1/M2 how to present this (e.g. map the editor's brightness scale onto the visible range); recorded here as an input, not a decision.
 - **Absolute luminance (for the flash rule):** not measured, no calibrated meter (user, 2026-10-13: left open; D37 stays conservative).
 
+## Brightness model and calibration (research + validation, 2026-10-13)
+
+**Driver** [V, research subagent; public GPL kernel source and datasheet only, no Nothing SDK or system APK decompiled]: Awinic **AW20144** (NothingOSS `android_kernel_msm-6.6_nothing_sm7750`, branch `sm7750/b/FroggerPro`, `drivers/leds/aw20144/leds-aw20144.c`, 137-entry channel map). Frame values (≤ 4095) become **8-bit PWM** (`value × brightness / 4095` into a byte), and light output is **linear in PWM** (datasheet: no gamma on PWM registers). PWM frequency **975 Hz** (`PCCR = 0xC0`).
+
+**Validation on device** (same/different judgements, one observer, alternating 4 s phases ×3, hardware values confirmed in logs): [measured 2026-10-13]
+
+| Test | Model prediction | Seen | Verdict |
+|---|---|---|---|
+| driver 4112 | dark (byte wrap) | **bright** | wrap refuted: values are **clamped at 4095** above the kernel (consistent with 8191 = 4095) |
+| 24 vs 32 | identical (both PWM 1) | identical | ✔ |
+| 32 vs 34 | different (PWM 1 vs 2) | different | ✔ 256-step quantisation confirmed |
+| 2047 vs 4095 | different | 4095 brighter (Step 2) | ✔ |
+| 16 vs 17 | off vs on (PWM 0 vs 1) | off vs on (Step 3) | ✔ |
+
+**So:** the device offers **256 linear light levels** (driver 0–4095 in steps of ~16) with an effective clamp at 4095. The "steep curve" is the eye's normal response to linear light. All open-source Glyph apps checked send linear 0–255 (about 6% of the range). Glyph Museum's source is not public.
+
+**Recommendation for M1/M2 (input to D46, not yet a decision):** a CIE L* (perceptual lightness) table in `:core` mapping stored 0–255 → driver 0–4095, with stored 1 on the first visible step: `p(s) = 1 + round(254·Y(100·(s−1)/254))`, `v(s) = min(4095, round((p+0.5)·4095/255))`, where Y(L*) = L*/903.3 for L* ≤ 8, else ((L*+16)/116)³.
+- Samples: s 0/1/8/32/64/128/192/255 → v 0/24/40/88/201/779/1999/4095.
+- Stored 1–5 share the lowest hardware step (a hardware limit).
+- Validate with the split-half bisection and staircase procedure.
+- Risks: 975 Hz PWM flicker for sensitive users and cameras; heat and power at 4095 unknown; undocumented behaviour (re-check on firmware updates; a runtime self-test is worth considering).
+
 ## Step 4: Frame rate
 
 `rowsSweep` for about 6 s per rate. Rates come from log timestamps: spike `achievedFps`, GlyphService `finalColors` lines, system `NtGlyphServiceImpl.setLightFrame` lines (first quarter skipped as switch-over). [measured 2026-10-13]
