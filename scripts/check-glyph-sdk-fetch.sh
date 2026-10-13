@@ -6,15 +6,11 @@
 # an existing home never reproduces a machine that lacks it. The SDK-absent cases therefore run before the clean fetch.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/fresh-gradle-home.sh
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 home=build/sdk-fetch-test/gradle-home
-rm -rf "$home"
-mkdir -p "$home"
-# reuse the wrapper distribution and provisioned JDKs; only dependencies start empty
-for shared in wrapper jdks; do
-  if [ -d "$HOME/.gradle/$shared" ]; then ln -s "$HOME/.gradle/$shared" "$home/$shared"; fi
-done
+fresh_gradle_home "$home"
 gw() { ./gradlew --gradle-user-home "$home" --no-configuration-cache "$@"; }
 sdk_cached() {
   find "$home/caches" \( -path '*com.nothing*' -o -name '*glyph-matrix*' \) -print > "$home/sdk-files.txt"
