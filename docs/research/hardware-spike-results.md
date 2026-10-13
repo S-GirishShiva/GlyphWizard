@@ -50,7 +50,8 @@ Vendor Glyph properties (`adb shell getprop | grep -i glyph`) [measured 2026-10-
 ## Step 2: Brightness range
 
 - **Values pass through unchanged up to 2047.** With `max=2047`, GlyphService's `finalColors` and the system layer show 1027 (level 128) and 2047 (level 255), contradicting the README's "capped at 255". Hardware brightness stays `4095` throughout. [measured 2026-10-13]
-- **Visible effect of values above 255:** not yet compared by eye (the first attempt was polluted by the charging animation; see Step 7). Until compared, the encoder keeps `maxValue = 255`. Open item: compare `all(255)` at max 255 against max 2047.
+- **Values above 255 are brighter, up to 4095.** Full matrix, alternating 5 s phases ×3, charging animation off: 2047 brighter than 255; 4095 brighter than 2047; 8191 looks the same as 4095 (two runs). Every value reached the system layer unchanged; the LED driver logs `brightness:4095` (12-bit). **The effective per-LED range is 0–4095**; Nothing's README ("capped at 255") is wrong for this device and build. [measured 2026-10-13]
+- **Caveats:** relying on > 255 is undocumented behaviour and could change with firmware. The perceived curve and the minimum visible level (Step 3) were measured on the 0–255 scale only.
 - **Caution on system-layer logs:** `NtGlyphServiceImpl` logs every glyph client (the charging animation interleaved its frames with ours), so its frames are attributed only while nothing else plays.
 
 ## Step 3: Response curve and minimum visible level
@@ -150,5 +151,7 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
 - **`shortService`** (D33): started 12:49:46.282, `Short FGS timed out` at 12:52:46.286, so **3 min 0.004 s from `startForeground`**; `onTimeout(startId, type=2048)` came 5 ms later; `stopSelf` → no ANR. Heartbeats every 10 s continued while backgrounded. Afterwards the process stays alive via the listener (proc state 5, not frozen). [measured 2026-10-13]
 
 ## Step 9: Restricted settings via Obtainium
+
+**Deferred** (user decision, 2026-10-13): a GitHub prerelease would publish M0's unreviewed history from the public repo. Run it after Task 8's `/code-review`, just before merging, with the sdkFree spike APK only. Until then the onboarding restricted-settings walkthrough (atlas) remains unverified. Known so far: an adb install shows no restricted-setting block (Step 8).
 
 ## Decisions affected
