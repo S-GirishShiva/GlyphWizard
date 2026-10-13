@@ -65,6 +65,8 @@ Vendor Glyph properties (`adb shell getprop | grep -i glyph`) [measured 2026-10-
 
   Steep from 31 to about 95, near-flat from 127 to 255, which agrees with the user's eye ("after the third band they look the same"). The camera's JPEG tone curve also compresses highlights, so this is a **perceived** curve (eye and camera), not a calibrated luminance curve. [measured 2026-10-13]
 - **Minimum visible level: 17.** Dark room, one observer: all LEDs at 1, 4 and 16 look off (16 re-checked on request: still off); 17, 18, 20 and 24 are visible. The system layer confirmed it received exactly 16 on all 137 LEDs. The one-step cut-off suggests a driver dead zone at ≤ 16 [U: hypothesis, not tested in daylight or by others]. [measured 2026-10-13]
+- **Re-measured at the full range (max 4095, D56):** stored 1 (driver 16) is invisible, stored 2 (driver 32) visible, consistent with the driver threshold at 17. **Minimum visible stored level at max 4095: 2.** The ramp photo clips (peaks 254–255 from the second LED, even with exposure reduced); the user sees little difference between bands 0–3 and none above. At full range nearly all perceptible variation sits in the lowest stored values. [measured 2026-10-13]
+- **Design input (M1/M2, not a decision):** map stored 0–255 onto 0–4095 with a perceptual curve (e.g. a gamma) so steps look evenly spaced; calibrate it by eye on device, since our camera clips and the lux app can't see the LEDs.
 - **Implication for the editor (spec §5, UI11):** of 0–255, roughly 17–~110 carries most visible differences; levels 1–16 render as off. Decide in M1/M2 how to present this (e.g. map the editor's brightness scale onto the visible range); recorded here as an input, not a decision.
 - **Absolute luminance (for the flash rule):** not measured, no calibrated meter (user, 2026-10-13: left open; D37 stays conservative).
 
@@ -155,3 +157,13 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
 **Deferred** (user decision, 2026-10-13): a GitHub prerelease would publish M0's unreviewed history from the public repo. Run it after Task 8's `/code-review`, just before merging, with the sdkFree spike APK only. Until then the onboarding restricted-settings walkthrough (atlas) remains unverified. Known so far: an adb install shows no restricted-setting block (Step 8).
 
 ## Decisions affected
+
+| Decision | Effect of M0 measurements |
+|---|---|
+| D6 (brightness 0–255) | Stored range unchanged; device mapping 0–255 → 0–4095 (**D56**); perceptual curve needed (input for M1/M2) |
+| D10 (tick 16–100 ms) | **Confirmed:** delivery exact through 90 fps; 60 fps (16.7 ms) has wide margin |
+| D28 (single process, listener) | **Supported:** the bound listener keeps the process at adj 250, unfrozen; crash rebind is automatic in 1.31 s; app-initiated rebind 22 ms |
+| D33 (agent turn as shortService) | **Confirmed:** hard limit 3 min 0.004 s from `startForeground`; clean `onTimeout`; no ANR when stopping |
+| D37 (flash safety) | Flash renders faithfully at 10–15 Hz with ≤ 8 ms edges; absolute luminance unmeasured, so it **stays conservative** (user: left open) |
+
+**Open M0 items:** Step 9 (restricted settings via Obtainium; after review, before merge); absolute luminance (no equipment; left open).

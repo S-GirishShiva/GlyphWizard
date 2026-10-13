@@ -484,6 +484,8 @@ All tokens (colour, type, spacing, shape, glass, motion, haptics, icons) and all
 ---
 
 ## 10. Hardware spike checklist (M0) [HW]
+
+**Measured 2026-10-13 → `docs/research/hardware-spike-results.md`** (all items except restricted settings via Obtainium, which is deferred to just before the M0 merge, and absolute luminance, left open).
 - **Display:**
   - SDK frame layout and ordering (GDK: 13×13; check that 137 vs 169 values are accepted)
   - brightness range (255 vs 2047) and response curve at ≥ 4 levels

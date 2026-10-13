@@ -22,3 +22,6 @@ local.properties
 
 # Superpowers visual companion scratch
 .superpowers/
+
+# raw M0 spike photos/videos (curated copies live in docs/research/spike-photos/)
+manual-test-pics/
