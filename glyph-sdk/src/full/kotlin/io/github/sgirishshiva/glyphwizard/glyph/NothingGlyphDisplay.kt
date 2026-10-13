@@ -10,7 +10,7 @@ import kotlin.time.Duration.Companion.seconds
 internal class NothingGlyphDisplay(
     private val service: MatrixService,
     private val encoder: MatrixFrameEncoder,
-    // provisional until the M0 hardware spike measures binding time
+    // [P]: M0 didn't time the bind itself; frames landed ~50 ms after register (hardware-spike-results.md)
     private val connectTimeout: Duration = 3.seconds,
 ) : GlyphDisplay {
     // Binder callbacks arrive on the main thread and calls on the caller's dispatcher, so session state changes under
