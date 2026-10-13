@@ -55,6 +55,8 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
+    implementation(libs.lifecycle.service)
+    implementation(libs.coroutines.core)
 
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
