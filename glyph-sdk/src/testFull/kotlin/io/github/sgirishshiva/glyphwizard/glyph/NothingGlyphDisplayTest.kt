@@ -22,20 +22,21 @@ class NothingGlyphDisplayTest {
         var binds = 0
         var closes = 0
         var unbinds = 0
-        private var onConnected: () -> Unit = {}
-        private var onDisconnected: () -> Unit = {}
+        private val onConnected = mutableListOf<() -> Unit>()
+        private val onDisconnected = mutableListOf<() -> Unit>()
 
-        fun serviceConnected() = onConnected()
+        /** Fires the callbacks of the [bind]-th bind (1-based); the latest by default. */
+        fun serviceConnected(bind: Int = binds) = onConnected[bind - 1]()
 
-        fun serviceDisconnected() = onDisconnected()
+        fun serviceDisconnected(bind: Int = binds) = onDisconnected[bind - 1]()
 
         override fun bind(
             onConnected: () -> Unit,
             onDisconnected: () -> Unit,
         ) {
             binds++
-            this.onConnected = onConnected
-            this.onDisconnected = onDisconnected
+            this.onConnected += onConnected
+            this.onDisconnected += onDisconnected
         }
 
         override fun register(deviceId: String): Boolean = registerAnswer.also { registered += deviceId }
@@ -174,6 +175,47 @@ class NothingGlyphDisplayTest {
             service.serviceConnected()
             assertEquals(1, service.registered.size)
             assertEquals(unavailable, display.show(IntArray(137)))
+        }
+
+    @Test
+    fun aReleasedPendingConnectTimingOutLeavesTheNextSessionAlone() =
+        runTest {
+            val first = async { display.connect() }
+            testScheduler.runCurrent()
+            display.release()
+            assertEquals(GlyphResult.Ok(Unit), connectWithService())
+
+            assertEquals(unavailable, first.await())
+            assertEquals(1, service.unbinds)
+            assertEquals(GlyphResult.Ok(Unit), display.show(IntArray(137)))
+        }
+
+    @Test
+    fun callbacksOfAReleasedSessionDontTouchTheNextOne() =
+        runTest {
+            val first = async { display.connect() }
+            testScheduler.runCurrent()
+            display.release()
+            assertEquals(GlyphResult.Ok(Unit), connectWithService())
+
+            service.serviceConnected(bind = 1)
+            service.serviceDisconnected(bind = 1)
+            assertEquals(1, service.registered.size)
+            assertEquals(GlyphResult.Ok(Unit), display.show(IntArray(137)))
+            assertEquals(unavailable, first.await())
+        }
+
+    @Test
+    fun releaseWhileConnectIsPendingClosesAndUnbinds() =
+        runTest {
+            val pending = async { display.connect() }
+            testScheduler.runCurrent()
+            display.release()
+            assertEquals(1, service.closes)
+            assertEquals(1, service.unbinds)
+            service.serviceConnected()
+            assertEquals(emptyList(), service.registered)
+            assertEquals(unavailable, pending.await())
         }
 
     @Test
