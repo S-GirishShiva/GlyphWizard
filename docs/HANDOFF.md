@@ -13,7 +13,8 @@
   - CI JDK 25;
   - threat model: force-stop leaves the matrix lit; third-party apps unarbitrated; Robolectric downloads outside verification.
 - Then **Task 8** (exit review via a subagent code review; Step 9 Obtainium test before merge; ask before any push).
-- D56: encoder max 4095 (user decision); perceptual curve needed in M1/M2.
+- D56: encoder max 4095 (user decision). **Brightness model validated** (results doc, "Brightness model and calibration"): AW20144 driver gives 256 linear PWM steps, clamped at 4095. **Recommendation for the D46 deep-dive / M1:** CIE L* table in `:core`.
+- Spike state on the phone: pattern service stopped; notification access granted to the spike listener (revoke if wanted).
 - Key facts: `NothingKey=test` is required (fixed); the charging animation overrides the app matrix (turn it off while measuring); `NtGlyphServiceImpl` logs are shared by all glyph clients.
 - Photos: `manual-test-pics/` (move the relevant ones into `docs/research/spike-photos/` as small JPEGs).
 - Work split: dev inline; research/review/QA in subagents. Stop and ask on any blocker.
