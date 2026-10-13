@@ -5,7 +5,7 @@
 ## Where we are
 - Branch `m0-foundations`. M0 plan rev 4 executing inline. **Tasks 1–5 done** (see `git log`); **Task 6 (hardware measurements) in progress.**
 - Ledger with every ruling: `.superpowers/sdd/2026-10-12-m0-foundations-spike/progress.md` (git-ignored; git log is the fallback).
-- Task 6 results so far: `docs/research/hardware-spike-results.md`. Steps 1 (layout: both work, no transform), 2 (values to 2047 pass through; visible effect unchecked), 3 (perceived curve steep to ~95; min visible level 17) and 4 (delivery ≤ 90 fps exact, ~115 max) done. **Next: Step 5** (flash, glow, pitch; needs 120 fps slow-mo video and a photo with a coin), then Steps 6–9 (auto-timeout, priority/states, kill/process, Obtainium; **ask before pushing any tag**).
+- Task 6 results so far: `docs/research/hardware-spike-results.md`. Steps 1 (layout: both work, no transform), 2 (values to 2047 pass through; visible effect unchecked), 3 (perceived curve steep to ~95; min visible level 17) and 4 (delivery ≤ 90 fps exact, ~115 max), 5 (flash clean at 10/15 Hz, rise ≤ 8 ms, no glow, pitch ≈ 1.7 mm) and 6 (timeout: no effect; held frames persist; system re-applies on screen-off; HOLD command added) done. **Next: Step 7** (priority and states), then Steps 8–9 (auto-timeout, priority/states, kill/process, Obtainium; **ask before pushing any tag**).
 - Key facts: `NothingKey=test` is required (fixed); the charging animation overrides the app matrix (turn it off while measuring); `NtGlyphServiceImpl` logs are shared by all glyph clients.
 - Photos: `manual-test-pics/` (move the relevant ones into `docs/research/spike-photos/` as small JPEGs).
 - Work split: dev inline; research/review/QA in subagents. Stop and ask on any blocker.
