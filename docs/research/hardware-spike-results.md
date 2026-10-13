@@ -140,6 +140,9 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
 
 ## Step 8: Kill and process
 
+- **Force-stop while all LEDs play at 255: the matrix stays stuck on the last frame** (user: "stuck lit"). No light-off, `closeAppMatrix` or death handling appears in the log; the glyph service doesn't clean up after a dead client (Review Focus 5). [measured 2026-10-13]
+  - **Design input for M1/M3:** a crash or kill can leave the LEDs lit indefinitely. Clear the matrix on the next start, avoid long-held bright static frames, and treat this as a known risk in the threat model (power and privacy: a notification glyph left showing).
+
 ## Step 9: Restricted settings via Obtainium
 
 ## Decisions affected
