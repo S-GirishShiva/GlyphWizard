@@ -55,6 +55,9 @@ sealed interface SpikeCommand {
         const val ACTION_SHORT = "$PACKAGE.SHORT"
         const val ACTION_HOLD = "$PACKAGE.HOLD"
 
+        /** Handled by [SpikeListener], not the pattern service: unbind the listener, then ask for a rebind. */
+        const val ACTION_REBIND = "$PACKAGE.REBIND"
+
         const val EXTRA_PATTERN = "pattern"
         const val EXTRA_FPS = "fps"
         const val EXTRA_LAYOUT = "layout"

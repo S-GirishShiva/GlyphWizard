@@ -143,6 +143,11 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
 - **Force-stop while all LEDs play at 255: the matrix stays stuck on the last frame** (user: "stuck lit"). No light-off, `closeAppMatrix` or death handling appears in the log; the glyph service doesn't clean up after a dead client (Review Focus 5). [measured 2026-10-13]
   - **Design input for M1/M3:** a crash or kill can leave the LEDs lit indefinitely. Clear the matrix on the next start, avoid long-held bright static frames, and treat this as a known risk in the threat model (power and privacy: a notification glyph left showing).
 
+- **Listener process in the background** (notification access granted, app at Home): oom adj 250, proc state 5, not cached, not frozen. The system-bound listener keeps the process up (input to D28). [measured 2026-10-13]
+- **Automatic rebind after a crash** (`am crash`): crash 12:46:41.514, then connection lost (41.579), restart scheduled "in 1000 ms", process restarted (42.612), **listener connected 42.826: 1.31 s, with no app action**. [measured 2026-10-13]
+- **Notification access is lost on uninstall** (the user deleted and reinstalled the spike); an `adb install -r` update keeps it. The consent dialog for an adb install shows no restricted-setting block, and lists "Read your notifications", "Reply to messages" and "Change settings" (screenshot in the M0 photos).
+- **`shortService`** (D33): started 12:49:46.282, `Short FGS timed out` at 12:52:46.286, so **3 min 0.004 s from `startForeground`**; `onTimeout(startId, type=2048)` came 5 ms later; `stopSelf` → no ANR. Heartbeats every 10 s continued while backgrounded. Afterwards the process stays alive via the listener (proc state 5, not frozen). [measured 2026-10-13]
+
 ## Step 9: Restricted settings via Obtainium
 
 ## Decisions affected
