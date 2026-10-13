@@ -1,6 +1,6 @@
 # GlyphWizard In-App Agent — Architecture Draft v0.2
 
-Status: **DRAFT for adversarial review r2**. 2026-10-11. Supersedes v0.1.
+Status: **DRAFT v0.3 for adversarial review r3**. 2026-10-11. Supersedes v0.2 (v0.2 → v0.3: review r2 fixes, D26–D28).
 
 v0.2 incorporates:
 - review r1 (`…-review-r1.md`)
@@ -75,10 +75,10 @@ Evidence for task-level over fine-grained and over one catch-all: MCP-GRANITE, v
 | `paint` | Shapes (circle, line, text in bitmap font, fill, mirror/shift) → row strings → coordinate touch-ups |
 | `remove` / `revert` | Remove by ID; revert this turn's own steps |
 
-That is 11 names; `list_examples`/`get_example` count as one capability. Final count is settled at implementation **[P]**.
+That is 12 names (`list_examples`/`get_example` are one capability). Final count is settled at implementation **[P]**.
 
 - **Write envelope** (every write): `{changedIds, textPreview, lintWarnings}`. Errors say what's wrong, what's valid, and the fix. Arguments are absolute (idempotent retries). Each call is atomic; one agent turn = one undo group [D9].
-- **Image import:** when the user attaches an image, the app runs the deterministic import [D25]. The agent can re-run it with different params via `add_clip` (`source=image`).
+- **Image import:** user-side only in v1 [D25]. The agent hook (re-running the import with new params) is post-v1, because it requires retaining the source image (size, export and privacy implications) [review r2 M9].
 - **Schemas:** flat; every field required, optionals nullable; `additionalProperties:false`; no `oneOf`/`$ref`/`const`; ranges enforced by our validator [TPM] **[E]**. Hand-written schemas, or a small `SerialDescriptor` walker. Avoid sealed arg types (kotlinx-schema emits `oneOf`) [review L4] **[E]**. Committed as golden files. MCP-shaped, no MCP dependency [D14].
 - **Post-v1, by tier:** `render_image` (vision), `propose_variants` (generator params / keyframes only, top tier), extra analysis (jaggies, roundness, jerk, busyness).
 
@@ -108,6 +108,7 @@ That is 11 names; `list_examples`/`get_example` count as one capability. Final c
   - Anthropic Messages
   - **OpenAI models via OpenRouter**: metadata verified; needs one paid probe run to confirm end-to-end **[A→verify]**
   - Direct OpenAI is optional, with `reasoning_effort:none` where supported. Responses adapter post-v1 (~2–4 days) [TPM].
+- **v1 endpoint presets** (one list, review r2 L6) **[P]**: OpenRouter, ClinePass, Anthropic (direct), Local network (Ollama / LM Studio / llama.cpp), Custom OpenAI-compatible. Everything else works through Custom; the subscription table below is guidance, not presets.
 - **Wire rules** [TPM] **[E]**:
   - Never send sampling parameters (`temperature`, `top_p`, …).
   - Never send `response_format` together with tools.
@@ -117,9 +118,10 @@ That is 11 names; `list_examples`/`get_example` count as one capability. Final c
 - **Stream parser:** defensive (missing/shared `index`, calls in the final frame, unreliable `finish_reason`). Regression-tested by replaying recorded provider streams through Ktor `MockEngine` [TPM] **[E]**.
 - **Capability gating** [TPM, D17, D19]:
   - Evidence: multi-turn reliability tracks integration path and tool training more than size (xLAM-2-8b 70.0 vs Llama-3.3-70B 21.5; FC vs prompt mode swings 30–50 pp; pass@1 − pass^3 = 8–18 pp) **[E]**.
-  - **Probe** = conformance gate on *our* integration path, repeated (~20–90 s, cents). It grants at most **Base** (provisional).
-  - **Harness** grants **Base** / **Full**. Starting hypotheses: pass^3 ≥ 0.6 / ≥ 0.7 **[EV]**.
+  - **Probe** = conformance gate on *our* integration path, repeated (~20–90 s, cents **[P]**). It grants at most "provisional".
+  - **Harness** grants **Supported** with one threshold (starting hypothesis pass^3 ≥ 0.6) on ~60–80 tasks × 3 runs [D27] **[EV]**.
   - Hard requirements: native tool calls and the user-declared context length ≥ 32k **[P]**.
+  - **v1 labels:** Supported / Below bar / Untested (+ "provisional" when only the probe has passed) [D27]. Base/Full tiers return with the v1.1 full-tier tools [review r2 M4].
 - **Detection:** the user's own endpoint metadata + a small bundled list + the probe + user override. The models.dev network refresh is opt-in, off by default, manual (D1; F-Droid "Tracking" exemption) [TPM] **[E]**.
 - **Subscriptions** (key-paste only; never OAuth) [TPM] — recheck all before release:
 
@@ -144,13 +146,14 @@ That is 11 names; `list_examples`/`get_example` count as one capability. Final c
   - vocabulary map
   - skill index
   - 0–1 worked examples per tier
-- **Working caps (unified):** ~30k for Base, ~60k for Full **[P, EV]** (fixes M1).
+- **Working cap:** `min(30k, declaredContext − maxOutput − margin)`, with `maxOutput` set per endpoint **[P, EV]** [review r2 M2].
+- **Session scope:** one agent session per document. The device card is part of the frozen prefix, so a different DeviceProfile means a new session [review r2 L9] **[P]**.
 - **No in-place mutation of past turns.** Claude 5.5-class models reject replayed thinking if `system`, `tools`, or earlier messages changed [TPM] **[E]**. Therefore:
   - Shorten tool results *before* first send.
   - Document state goes in the newest user turn.
   - "Clearing stale tool results" is removed.
-- **Epochs:** an epoch = (model, endpoint, tool-schema version, kbVersion, app version). When the epoch changes, compact earlier turns into one plain-text summary message [TPM] **[P]**.
-- **Skills:** agentskills.io SKILL.md format; ≤ 1.2k tokens per section; 4 skills in v1.
+- **Epochs:** an epoch = (model, endpoint, key fingerprint, system-prompt hash, tool-schema version, kbVersion, app version, deviceProfileId) [review r2 M1]. When the epoch changes, compact earlier turns into one plain-text summary message [TPM] **[P]**.
+- **Skills:** agentskills.io SKILL.md format; ≤ 1.2k tokens per section **[P]**; 4 skills in v1 **[P]**.
 - **Exemplars:** 0 in-prompt for Full, 1 for Base, ≤ 2 more on demand. Run a 0/1/3 ablation before committing **[EV]**. "3 ≈ 9" is re-cited as narrow (2024, one dataset) [TES].
 - **Generated from Kotlin, CI-checked:** device card, generator catalogue (with grid snapshots), tool schemas. `kbVersion` is stamped on traces and eval results.
 - **i18n:** reply in the user's language; KB, identifiers, and enum values stay English; closed enums for arguments [TAP] **[E]**.
@@ -161,12 +164,13 @@ That is 11 names; `list_examples`/`get_example` count as one capability. Final c
   - Koog spike ≤ ½ day. First question: does it build for Android at all (README inconsistent) [review L3].
 - **Persistence:** two layers [TPM] **[P]**:
   1. a neutral transcript, saved after every step; exports carry only this, and only if the user opts in
-  2. an epoch-keyed wire cache holding provider-specific payloads such as reasoning blobs
+  2. an epoch-keyed wire cache holding provider-specific payloads such as reasoning blobs, **in memory only**. Process restart = epoch boundary → compact [review r2 M11] **[P]**
 - **Backgrounding** [TAP] **[E for platform behaviour]**:
   - Cached apps are frozen ~10 s after leaving the foreground on Android 14+, and their sockets are closed.
   - Design:
     - `shortService` foreground service at turn start, extended while visible
-    - 5 min total turn cap; ≤ 150 s background budget
+    - 5 min total turn cap; ≤ 150 s background budget (**[P]** numbers on top of **[E]** platform limits)
+  - When notification access is granted (triggers), the process is never cached or frozen, so turns survive backgrounding anyway. Agent and triggers share one process with a narrow trigger boundary [D28].
     - `onTimeout` → Stop path (finished ops kept as one undo group)
   - On return: **"Paused: Continue / Keep / Undo"**; Continue requires a tap.
   - The hardware spike adds a backgrounding matrix (10/60/170/200 s, with/without FGS, locked), logging `ApplicationExitInfo` **[HW]**.
@@ -181,9 +185,9 @@ That is 11 names; `list_examples`/`get_example` count as one capability. Final c
 
 ## 8. UX
 
-- **Apply directly + undo** [UX] **[E for trend]**. The turn card has three states [TES]:
+- **Apply directly + undo** [UX] **[E for trend]**. The turn card (**[P]**, [TES] synthesis) has three states:
   - **Undo** while the turn is still the latest change.
-  - **Undo this turn** if later user edits didn't touch the same paths. Uses JSON-Patch `test` guards on `touchedPaths`.
+  - **Undo this turn** if later user edits didn't touch the same paths (JSON-Patch `test` guards on `touchedPaths`; property-tested in `:core`) [D36].
   - **Restore to before this turn…** otherwise. Applied as a new forward group; nothing is lost.
   - The transcript is never truncated. Press-and-hold shows before/after.
 - **References:** selection chip; `@`-mention clips by auto-name.

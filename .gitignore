@@ -2,7 +2,7 @@
 .gradle
 /local.properties
 .DS_Store
-/build
+build/
 /captures
 .externalNativeBuild
 .cxx
@@ -19,3 +19,9 @@ local.properties
 
 # Kotlin
 .kotlin/
+
+# Superpowers visual companion scratch
+.superpowers/
+
+# raw M0 spike photos/videos (curated copies live in docs/research/spike-photos/)
+manual-test-pics/

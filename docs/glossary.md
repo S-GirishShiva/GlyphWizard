@@ -11,7 +11,7 @@ Layer 2: [Generator clip ring_pulse@1 {speed:1.2}, 600–1800ms] → transition 
 
 | Term | Meaning | Backend analogy |
 |---|---|---|
-| Frame | One snapshot of all LEDs (137 on 4a Pro), each a brightness 0–255 | A row |
+| Frame | One snapshot of all LEDs (137 on 4a Pro), each a brightness 0–255 (hardware raw range under test in M0) | A row |
 | Raster | Data stored as literal pixels | Materialized data |
 | Timeline | The animation's time axis, in milliseconds | — |
 | Layer | A track on the timeline; higher layers draw on top | Z-index |
@@ -37,7 +37,7 @@ Layer 2: [Generator clip ring_pulse@1 {speed:1.2}, 600–1800ms] → transition 
 | Gamma correction | Bending brightness values so fades look perceptually even | — |
 | Device profile / mask | Grid size + which cells are real LEDs (137 of 169) | Config struct |
 | Resampling | Converting raster pixels between grid sizes | Schema data migration |
-| Foreground service | Android process the OS won't kill (shows a persistent notification) | Daemon |
+| Foreground service | Work Android keeps running while the app is in the background, shown via a persistent notification. Types differ: `shortService` (our agent turns) times out after ~3 min | A supervised worker with a deadline |
 
 ## Agent & editing
 
@@ -53,3 +53,14 @@ Layer 2: [Generator clip ring_pulse@1 {speed:1.2}, 600–1800ms] → transition 
 | Provenance journal | Who changed what (you vs `agent:<model>`) | Audit log |
 | Schema version / migration | File format version + upgrade functions | DB migrations |
 | Golden-frame tests | Compare rendered frames to saved known-good frames | Snapshot tests |
+
+## Agent runtime
+
+| Term | Meaning | Backend analogy |
+|---|---|---|
+| Tier / support label | Which tool surface a model gets; v1 labels: Supported / Below bar / Untested | Feature flags by client capability |
+| Probe | ~20–90 s automated check that an endpoint does tool calls correctly through our code | Health check / contract test |
+| Eval harness | JVM CLI running scored tasks against a model to decide support | Integration test suite + benchmark |
+| Epoch | (model, endpoint, key, prompt, tools, KB, app version, device) tuple; when it changes, old chat turns are summarised | Cache key / schema version |
+| Turn card | Chat card summarising one agent turn, with Undo / Restore | A deploy entry with rollback |
+| Frames mode / Timeline mode | Beginner frame-by-frame editor vs layered keyframe editor over the same document | Two UIs over one API |

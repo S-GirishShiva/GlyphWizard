@@ -1,0 +1,8 @@
+# <job>: <gradle args>. Read by scripts/ci.sh (CI jobs, README, verification metadata).
+checks: ktlintCheck lintSdkFreeDebug :designsystem:lintDebug :core:test :agent:test :evals:test :designsystem:testDebugUnitTest :glyph-sdk:testSdkFreeDebugUnitTest :app:testSdkFreeDebugUnitTest :app:testSdkFreeReleaseUnitTest :spike:testSdkFreeDebugUnitTest :core:koverVerify :agent:koverVerify :glyph-sdk:koverVerifySdkFreeDebug :designsystem:koverVerifyDebug :app:koverVerifySdkFreeDebug :app:assembleSdkFreeDebug :app:assembleSdkFreeRelease :spike:assembleSdkFreeDebug
+detekt: detekt :core:detektMain :agent:detektMain :evals:detektMain :designsystem:detektDebug :glyph-sdk:detektSdkFreeDebug :app:detektSdkFreeDebug :app:detektSdkFreeRelease :spike:detektSdkFreeDebug
+canary: -PwithCanary :detekt-canary:detektMain
+full: :glyph-sdk:testFullDebugUnitTest :spike:testFullDebugUnitTest :glyph-sdk:koverVerifyFullDebug lintFullDebug :app:assembleFullDebug :spike:assembleFullDebug
+detekt-full: :glyph-sdk:detektFullDebug :spike:detektFullDebug
+# tasks the check-*.sh scripts run; listed for verification metadata only
+scripts: :app:assembleFullDebug :app:assembleSdkFreeDebug :app:assembleSdkFreeRelease :core:koverXmlReport :designsystem:koverXmlReportDebug :glyph-sdk:koverXmlReportSdkFreeDebug :glyph-sdk:koverXmlReportFullDebug :app:koverXmlReportSdkFreeDebug

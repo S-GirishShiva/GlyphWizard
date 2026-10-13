@@ -1,0 +1,141 @@
+config:
+  validation: true
+
+# Rules that skip test code by default get our flavour/build-type test source sets added to their (otherwise
+# unchanged) default excludes: testFull, testSdkFree, testDebug, testRelease.
+
+coroutines:
+  GlobalCoroutineUsage:
+    active: true
+  InjectDispatcher:
+    active: true
+    dispatcherNames: ['IO', 'Default', 'Unconfined']
+  SleepInsteadOfDelay:
+    active: true
+  SuspendFunSwallowedCancellation:
+    active: true
+  SuspendFunWithFlowReturnType:
+    active: true
+  SuspendFunInFinallySection:
+    active: true
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+    active: true
+  MapGetWithNotNullAssertionOperator:
+    active: true
+  UnsafeCast:
+    active: true
+  CastNullableToNonNullableType:
+    active: true
+  DoubleMutabilityForCollection:
+    active: true
+  LateinitUsage:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+    active: true
+
+naming:
+  FunctionNaming:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+    # Composables are PascalCase by Compose convention
+    ignoreAnnotated: ['Composable']
+
+style:
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - value: 'kotlinx.coroutines.runBlocking'
+        reason: 'suspend or use an owned scope (patterns #6)'
+      - value: 'java.lang.Thread.sleep'
+        reason: 'use delay (patterns #7)'
+      - value: 'java.lang.System.currentTimeMillis'
+        reason: 'inject a Clock or TimeSource (patterns #14)'
+      - value: 'android.app.Activity.findViewById'
+        reason: 'Compose only (patterns #16)'
+      - value: 'androidx.activity.ComponentActivity.onBackPressed'
+        reason: 'BackHandler / Nav3 (patterns #22)'
+      - value: 'androidx.compose.runtime.collectAsState'
+        reason: 'use collectAsStateWithLifecycle (patterns #30)'
+  ForbiddenImport:
+    active: true
+    forbiddenImports:
+      - value: 'androidx.lifecycle.LiveData'
+        reason: 'StateFlow (patterns #11)'
+      - value: 'androidx.lifecycle.MutableLiveData'
+        reason: 'StateFlow (patterns #11)'
+      - value: 'io.reactivex.*'
+        reason: 'coroutines/Flow (patterns #12)'
+      - value: 'com.google.gson.*'
+        reason: 'kotlinx.serialization (patterns #13)'
+      - value: 'com.squareup.moshi.*'
+        reason: 'kotlinx.serialization (patterns #13)'
+      - value: 'org.json.*'
+        reason: 'kotlinx.serialization (patterns #13)'
+      - value: 'java.util.Date'
+        reason: 'kotlin.time / Clock (patterns #14)'
+      - value: 'java.util.Calendar'
+        reason: 'kotlin.time / Clock (patterns #14)'
+      - value: 'java.text.SimpleDateFormat'
+        reason: 'kotlin.time / Clock (patterns #14)'
+      - value: 'java.util.UUID'
+        reason: 'kotlin.uuid.Uuid (patterns #15)'
+      - value: 'androidx.fragment.*'
+        reason: 'Compose (patterns #16)'
+      - value: 'androidx.appcompat.*'
+        reason: 'ComponentActivity + Compose (patterns #16)'
+      - value: 'android.os.AsyncTask'
+        reason: 'coroutines (patterns #18)'
+      - value: 'android.os.Handler'
+        reason: 'coroutines (patterns #18)'
+      - value: 'java.util.concurrent.Executors'
+        reason: 'coroutines (patterns #18)'
+      - value: 'android.support.*'
+        reason: 'AndroidX (patterns #19)'
+      - value: 'android.content.SharedPreferences'
+        reason: 'DataStore (patterns #21)'
+  ForbiddenAnnotation:
+    active: true
+    annotations:
+      - value: 'kotlin.OptIn'
+        reason: 'needs a decision entry; suppress per file citing it (patterns #29)'
+  DataClassShouldBeImmutable:
+    active: true
+  VarCouldBeVal:
+    active: true
+  UtilityClassWithPublicConstructor:
+    active: true
+  RangeUntilInsteadOfRangeTo:
+    active: true
+  MagicNumber:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/*.kts', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+
+comments:
+  KDocReferencesNonPublicProperty:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  UndocumentedPublicClass:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  UndocumentedPublicFunction:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  UndocumentedPublicProperty:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+
+complexity:
+  StringLiteralDuplication:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  TooManyFunctions:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+
+exceptions:
+  InstanceOfCheckForException:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  ThrowingExceptionsWithoutMessageOrCause:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  TooGenericExceptionCaught:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+
+performance:
+  ForEachOnRange:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']
+  SpreadOperator:
+    excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/androidUnitTest/**', '**/androidInstrumentedTest/**', '**/jsTest/**', '**/iosTest/**', '**/testFull/**', '**/testSdkFree/**', '**/testDebug/**', '**/testRelease/**']

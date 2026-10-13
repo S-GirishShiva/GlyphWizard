@@ -1,0 +1,71 @@
+# Jobs and their Gradle tasks live in scripts/ci-tasks.txt (via scripts/ci.sh), shared with the verification metadata.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 25
+      # 'basic' is the open-source GitHub Actions cache; the default 'enhanced' is a commercial service
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+      - run: bash scripts/ci.sh checks
+      - run: bash scripts/guard-banned.sh
+      - run: bash scripts/check-tooling-active.sh
+
+  detekt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+      # run-detekt.sh classifies by SARIF: exit 1 = findings, exit 2 = detekt crashed (D47)
+      - run: bash scripts/ci.sh detekt
+      - run: bash scripts/detekt-canary.sh
+
+  full-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+      - run: bash scripts/check-glyph-sdk-fetch.sh
+      - run: bash scripts/check-sdkfree-apk.sh
+      - run: bash scripts/ci.sh full
+      - run: bash scripts/ci.sh detekt-full
+      - run: bash scripts/check-tooling-active.sh full
