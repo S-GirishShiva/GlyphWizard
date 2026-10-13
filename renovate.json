@@ -1,6 +1,6 @@
 {
   "extends": ["config:recommended"],
-  "enabledManagers": ["gradle", "github-actions"],
+  "enabledManagers": ["gradle", "gradle-wrapper", "github-actions"],
   "minimumReleaseAge": "14 days",
   "packageRules": [{ "matchPackageNames": ["dev.detekt*"], "automerge": false }]
 }
