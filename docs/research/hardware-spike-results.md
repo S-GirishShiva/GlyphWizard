@@ -145,6 +145,7 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
 
 - **Listener process in the background** (notification access granted, app at Home): oom adj 250, proc state 5, not cached, not frozen. The system-bound listener keeps the process up (input to D28). [measured 2026-10-13]
 - **Automatic rebind after a crash** (`am crash`): crash 12:46:41.514, then connection lost (41.579), restart scheduled "in 1000 ms", process restarted (42.612), **listener connected 42.826: 1.31 s, with no app action**. [measured 2026-10-13]
+- **App-initiated rebind** (`REBIND` hook): `requestUnbind` → disconnected +7 ms → `requestRebind` +4 ms → **connected +22 ms**. An app-requested rebind is about 60× faster than the system's 1.3 s crash recovery (input to D28 and the M3 listener). [measured 2026-10-13]
 - **Notification access is lost on uninstall** (the user deleted and reinstalled the spike); an `adb install -r` update keeps it. The consent dialog for an adb install shows no restricted-setting block, and lists "Read your notifications", "Reply to messages" and "Change settings" (screenshot in the M0 photos).
 - **`shortService`** (D33): started 12:49:46.282, `Short FGS timed out` at 12:52:46.286, so **3 min 0.004 s from `startForeground`**; `onTimeout(startId, type=2048)` came 5 ms later; `stopSelf` → no ANR. Heartbeats every 10 s continued while backgrounded. Afterwards the process stays alive via the listener (proc state 5, not frozen). [measured 2026-10-13]
 
