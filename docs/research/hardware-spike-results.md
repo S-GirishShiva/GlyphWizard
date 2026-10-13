@@ -99,6 +99,18 @@ Second phone: 120 fps slow motion (no 240 fps available), photos; analysis with 
 
 ## Step 6: Auto-timeout
 
+`setGlyphMatrixTimeout` (SDK; behaviour undocumented) via `TIMEOUT`, and a `HOLD` command added to the spike (sends one frame, then nothing, without releasing; user decision 2026-10-13). [measured 2026-10-13]
+
+| Case | Result |
+|---|---|
+| Timeout **on**, frames streaming at 30 fps, 60 s | never cleared: 1 809 light-on events, 0 off |
+| Timeout **on**, single held frame | still lit after 2+ min (user); no light-off event in 90 s of logs |
+| Timeout **off**, single held frame | still lit, including after the phone screen went to sleep (user) |
+
+- **No observable effect of `setGlyphMatrixTimeout`** in either direction within these windows; a held frame persists. For M3: a trigger that ends on a held frame must clear the matrix itself (`closeAppMatrix`); the system won't.
+- **The system re-applies the current frame on its own** when the screen sleeps: at screen-off (doze), `NtGlyphServiceImpl` received a screen-upward sensor event (`type 65538`) and re-sent the held frame twice (+37 s and +39 s). This matches the user's "flicker in between". Re-application keeps the same frame (128 stayed 128).
+- About 0.5 s after the last frame, the lights driver logs `Lights_power_thread wait` (likely the driver idling once frames stop) [U: effect, if any, not visible].
+
 ## Step 7: Priority and states
 
 ## Step 8: Kill and process

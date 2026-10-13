@@ -4,6 +4,7 @@ import android.os.Bundle
 import io.github.sgirishshiva.glyphwizard.core.DeviceProfile
 import io.github.sgirishshiva.glyphwizard.glyph.MatrixFrameEncoder.Layout
 import io.github.sgirishshiva.glyphwizard.spike.SpikeCommand.Companion.ACTION_DUMP
+import io.github.sgirishshiva.glyphwizard.spike.SpikeCommand.Companion.ACTION_HOLD
 import io.github.sgirishshiva.glyphwizard.spike.SpikeCommand.Companion.ACTION_SHORT
 import io.github.sgirishshiva.glyphwizard.spike.SpikeCommand.Companion.ACTION_SHOW
 import io.github.sgirishshiva.glyphwizard.spike.SpikeCommand.Companion.ACTION_STOP
@@ -62,6 +63,11 @@ class SpikeCommandTest {
     fun otherActionsParse() {
         assertEquals(SpikeCommand.AutoTimeout(false), SpikeCommand.from(ACTION_TIMEOUT, extras("enabled" to false)))
         assertEquals(SpikeCommand.AutoTimeout(true), SpikeCommand.from(ACTION_TIMEOUT, null))
+        assertEquals(
+            SpikeCommand.Hold(SpikeCommand.Show(PatternName.All, 30, Layout.FullSquare, 255, 128, 10, 6, 6)),
+            SpikeCommand.from(ACTION_HOLD, extras("pattern" to "all", "level" to 128)),
+        )
+        assertNull(SpikeCommand.from(ACTION_HOLD, extras("pattern" to "spiral")))
         assertEquals(SpikeCommand.Dump, SpikeCommand.from(ACTION_DUMP, null))
         assertEquals(SpikeCommand.Stop, SpikeCommand.from(ACTION_STOP, null))
         assertEquals(SpikeCommand.Short, SpikeCommand.from(ACTION_SHORT, null))
@@ -83,7 +89,7 @@ class SpikeCommandTest {
     fun theReceiverListensForEveryAction() {
         val filter = SpikeCommand.intentFilter()
         assertEquals(
-            setOf(ACTION_SHOW, ACTION_TIMEOUT, ACTION_DUMP, ACTION_STOP, ACTION_SHORT),
+            setOf(ACTION_SHOW, ACTION_HOLD, ACTION_TIMEOUT, ACTION_DUMP, ACTION_STOP, ACTION_SHORT),
             (0..<filter.countActions()).map(filter::getAction).toSet(),
         )
     }

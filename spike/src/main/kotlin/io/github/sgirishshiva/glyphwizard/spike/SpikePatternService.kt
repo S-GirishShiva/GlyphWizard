@@ -91,6 +91,10 @@ class SpikePatternService : LifecycleService() {
                 show(command)
             }
 
+            is SpikeCommand.Hold -> {
+                hold(command)
+            }
+
             is SpikeCommand.AutoTimeout -> {
                 val result = withContext(container.dispatcher) { playing?.display?.setAutoTimeout(command.enabled) }
                 Log.i(STATUS, "autoTimeout(${command.enabled}) -> ${result ?: "nothing playing"}")
@@ -115,19 +119,25 @@ class SpikePatternService : LifecycleService() {
     }
 
     private suspend fun show(command: SpikeCommand.Show) {
-        val current = playing
-        val active =
-            if (current != null && current.layout == command.layout && current.maxValue == command.maxValue) {
-                current
-            } else {
-                // the old session's closeAppMatrix must finish before the new display connects
-                current?.session?.stop()?.join()
-                playing = null
-                connect(command) ?: return
-            }
-        playing = active
+        val active = playingFor(command) ?: return
         active.session.start(patternFor(command), command.fps)
         Log.i(STATUS, "showing $command")
+    }
+
+    private suspend fun hold(command: SpikeCommand.Hold) {
+        val active = playingFor(command.show) ?: return
+        active.session.hold(patternFor(command.show)).join()
+        Log.i(STATUS, "holding ${command.show} -> ${active.session.lastResult.value}")
+    }
+
+    /** The playing session if its display matches [command]'s layout and range, otherwise a newly connected one. */
+    private suspend fun playingFor(command: SpikeCommand.Show): Playing? {
+        val current = playing
+        if (current != null && current.layout == command.layout && current.maxValue == command.maxValue) return current
+        // the old session's closeAppMatrix must finish before the new display connects
+        current?.session?.stop()?.join()
+        playing = connect(command)
+        return playing
     }
 
     private suspend fun connect(command: SpikeCommand.Show): Playing? {

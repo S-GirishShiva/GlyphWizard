@@ -19,6 +19,11 @@ sealed interface SpikeCommand {
         val y: Int,
     ) : SpikeCommand
 
+    /** Shows one frame of [show]'s pattern and then stops sending, to test how a held frame behaves. */
+    data class Hold(
+        val show: Show,
+    ) : SpikeCommand
+
     data class AutoTimeout(
         val enabled: Boolean,
     ) : SpikeCommand
@@ -48,6 +53,7 @@ sealed interface SpikeCommand {
         const val ACTION_DUMP = "$PACKAGE.DUMP"
         const val ACTION_STOP = "$PACKAGE.STOP"
         const val ACTION_SHORT = "$PACKAGE.SHORT"
+        const val ACTION_HOLD = "$PACKAGE.HOLD"
 
         const val EXTRA_PATTERN = "pattern"
         const val EXTRA_FPS = "fps"
@@ -76,7 +82,14 @@ sealed interface SpikeCommand {
 
         fun intentFilter(): IntentFilter =
             IntentFilter().apply {
-                listOf(ACTION_SHOW, ACTION_TIMEOUT, ACTION_DUMP, ACTION_STOP, ACTION_SHORT).forEach(::addAction)
+                listOf(
+                    ACTION_SHOW,
+                    ACTION_HOLD,
+                    ACTION_TIMEOUT,
+                    ACTION_DUMP,
+                    ACTION_STOP,
+                    ACTION_SHORT,
+                ).forEach(::addAction)
             }
 
         /** The command for [action] and its [extras], or null if anything is unknown or out of range. */
@@ -87,6 +100,7 @@ sealed interface SpikeCommand {
             val args = extras ?: Bundle.EMPTY
             return when (action) {
                 ACTION_SHOW -> show(args)
+                ACTION_HOLD -> show(args)?.let(::Hold)
                 ACTION_TIMEOUT -> AutoTimeout(args.getBoolean("enabled", true))
                 ACTION_DUMP -> Dump
                 ACTION_STOP -> Stop

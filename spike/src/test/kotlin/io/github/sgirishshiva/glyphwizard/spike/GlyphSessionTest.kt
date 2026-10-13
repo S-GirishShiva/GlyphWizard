@@ -85,6 +85,22 @@ class GlyphSessionTest {
         }
 
     @Test
+    fun holdSendsOneFrameThenNothingAndKeepsTheDisplay() =
+        runTest {
+            val session = session()
+            session.start(all(1), 50)
+            testScheduler.advanceTimeBy(100.milliseconds)
+            val holding = session.hold(all(7))
+            testScheduler.runCurrent()
+            assertTrue(holding.isCompleted)
+            assertEquals("show:7", display.events.last())
+            val eventsAtHold = display.events.size
+            testScheduler.advanceTimeBy(5.seconds)
+            assertEquals(eventsAtHold, display.events.size)
+            assertTrue("release" !in display.events)
+        }
+
+    @Test
     fun aSecondStartReplacesTheFirstLoop() =
         runTest {
             val session = session()

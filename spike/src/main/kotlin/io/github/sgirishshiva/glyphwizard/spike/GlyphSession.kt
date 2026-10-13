@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
@@ -54,6 +55,16 @@ class GlyphSession(
                     if (elapsed.isPositive()) achievedFps.value = frames / elapsed.toDouble(DurationUnit.SECONDS)
                 }
             }
+    }
+
+    /** Stops the loop and shows one frame of [pattern], then sends nothing more and keeps the display. */
+    fun hold(pattern: Pattern): Job {
+        val running = loop
+        loop = null
+        return scope.launch(dispatcher) {
+            running?.cancelAndJoin()
+            lastResult.value = display.show(pattern(profile, Duration.ZERO))
+        }
     }
 
     /** Stops playing and releases the display once any in-flight frame has finished. */
