@@ -113,6 +113,22 @@ Second phone: 120 fps slow motion (no 240 fps available), photos; analysis with 
 
 ## Step 7: Priority and states
 
+Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to 16 MB for attribution (restored afterwards). [measured 2026-10-13]
+
+- **Charging animation:** with the phone on USB, Nothing's charging animation overrides the app matrix (user turned it off for the other measurements).
+- **WhatsApp message, phone face-up and unlocked** (the user has a Glyph Museum notification sequence set up):
+
+  | Phase | Log | Seen |
+  |---|---|---|
+  | 1 (1.5 s) | Nothing's system notification glyph on **light 108** (`NtAudioGlyphServiceImpl.openAudioLight`, system uid), exclusive | the standard Nothing animation only |
+  | 2–3 (25 s) | **Glyph Museum writes the same app-matrix light (123) as us**: 259 of its frames interleaved with ours (last write wins) | both patterns, flickering |
+  | after | only our frames | ours alone |
+
+- **Implications for M3 (design inputs, not decisions):**
+  - Nothing's system glyphs outrank third-party apps cleanly (separate light, exclusive while it plays).
+  - **Third-party apps are not arbitrated against each other**: two apps writing light 123 overwrite each other frame by frame. GlyphWizard should avoid streaming when nothing changes, and document coexistence with other Glyph apps (e.g. Glyph Museum).
+- **Settings path, locked/face-down/pocketed, AOD toy:** below.
+
 ## Step 8: Kill and process
 
 ## Step 9: Restricted settings via Obtainium
