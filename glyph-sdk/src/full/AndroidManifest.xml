@@ -4,4 +4,12 @@
     <!-- lets the Nothing glyph service accept this app's frames -->
     <uses-permission android:name="com.nothing.ketchum.permission.ENABLE" />
 
+    <application>
+        <!-- Nothing's development key; every working third-party Glyph Matrix app and Nothing's example declare it.
+             Without it the glyph service logs "session is null" and drops frames (M0 spike, hardware-spike-results.md). -->
+        <meta-data
+            android:name="NothingKey"
+            android:value="test" />
+    </application>
+
 </manifest>
