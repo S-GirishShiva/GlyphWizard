@@ -3,9 +3,17 @@
 **Updated:** 2026-10-12 · **Branch:** `design/v1-spec` (pushed) · **Last commit:** see `git log -1`
 
 ## Where we are
-- Branch `m0-foundations`. M0 plan rev 4 executing inline. **Tasks 1–5 done** (see `git log`); **Task 6 (hardware measurements) in progress.**
+- Branch `m0-foundations`. M0 plan rev 4 executing inline. **Tasks 1–6 done** (Task 6 except Step 9, deferred by user to after Task 8's review and before the merge; absolute luminance left open). See `git log` and `docs/research/hardware-spike-results.md`.
 - Ledger with every ruling: `.superpowers/sdd/2026-10-12-m0-foundations-spike/progress.md` (git-ignored; git log is the fallback).
-- Task 6 results so far: `docs/research/hardware-spike-results.md`. **Steps 1–8 done** (layout, range, perceived curve and min level 17, delivery fps, flash/rise/glow/pitch, auto-timeout + HOLD, priority/states/AOD toy/settings path, force-stop leaves matrix lit, process state, crash rebind 1.31 s, app rebind 22 ms via REBIND hook, shortService 3 min 0.004 s). **Next: Step 9** (restricted settings via Obtainium; user deciding between GitHub prerelease (pushes 64 commits to the public repo), a LAN direct-APK link, or deferring), then Step 10 (write decisions D6/D10/D28/D33/D37 amendments, set encoder defaults, spec §10 tags; restore device log buffer with `adb logcat -G 256K`; move photos from `manual-test-pics/` to `docs/research/spike-photos/`), Step 11 commit; then Task 7 (CI; ledger has notes: NothingKey check in APK script, :app:detektSdkFreeRelease, no build-logic, fresh-home verification metadata), Task 8.
+- **Next: Task 7** (CI, supply chain, threat model). Ledger notes for it:
+  - the APK script must assert NothingKey is in full and absent from sdkFree;
+  - add `:app:detektSdkFreeRelease` and `:spike:detektFullDebug` to the detekt line;
+  - build-logic is gone (no validatePlugins; `scripts:` uses `:app:assembleFullDebug`);
+  - verification metadata must be generated from a FRESH Gradle home;
+  - CI JDK 25;
+  - threat model: force-stop leaves the matrix lit; third-party apps unarbitrated; Robolectric downloads outside verification.
+- Then **Task 8** (exit review via a subagent code review; Step 9 Obtainium test before merge; ask before any push).
+- D56: encoder max 4095 (user decision); perceptual curve needed in M1/M2.
 - Key facts: `NothingKey=test` is required (fixed); the charging animation overrides the app matrix (turn it off while measuring); `NtGlyphServiceImpl` logs are shared by all glyph clients.
 - Photos: `manual-test-pics/` (move the relevant ones into `docs/research/spike-photos/` as small JPEGs).
 - Work split: dev inline; research/review/QA in subagents. Stop and ask on any blocker.
