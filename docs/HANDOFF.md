@@ -19,14 +19,8 @@
 - Photos: `manual-test-pics/` (move the relevant ones into `docs/research/spike-photos/` as small JPEGs).
 - Work split: dev inline; research/review/QA in subagents. Stop and ask on any blocker.
 
-## Read these first (in order)
-0. `CLAUDE.md` (auto-loaded) and `docs/engineering/code-guidelines.md`
-1. `docs/superpowers/specs/2026-10-12-glyphwizard-v1-design.md`: **the source of truth**
-2. `docs/design/frontend-guidelines.md`: UI code rules (`:designsystem`, R1–R14)
-3. `docs/research/decisions.md`: D1–D46
-4. `docs/design/design-log.md`: UI1–UI38
-5. `docs/design/atlas.html`: every approved screen. `docs/design/flow.md`: navigation
-6. Reference only: `docs/research/2026-10-11-*.md` (research reports, reviews r1–r3, superseded drafts)
+## Read these first
+Follow the **Startup reading** checklist in `CLAUDE.md` (in full, in order, before acting). It includes `modern-kotlin-patterns.md` and `decisions.md` (D1–D56), which an earlier session skipped.
 
 ## Working agreements (also in Claude memory)
 - **No assumptions:** cite evidence or tag [P]/[HW]/[EV]. Research → plan → adversarial review → refine.
