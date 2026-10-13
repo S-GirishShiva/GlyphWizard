@@ -61,7 +61,17 @@ class MatrixFrameEncoderTest {
             }
         val frame = encoder(Layout.LedsOnly, maxValue = 2047).encode(input)
         assertEquals(2047, frame[0])
-        assertEquals(1027, frame[1])
+        assertEquals(1028, frame[1])
+    }
+
+    @Test
+    fun everyStoredLevelLandsOnItsOwnPhone4aProDriverStep() {
+        // driver model (hardware-spike-results.md, validated on device): PWM step = value * 255 / 4095, floored
+        val encoder = MatrixFrameEncoder(profile, Layout.LedsOnly, maxValue = 4095)
+        for (level in 0..255) {
+            val value = encoder.encode(IntArray(profile.ledCount) { level })[0]
+            assertEquals(level, value * 255 / 4095, "stored $level -> driver $value")
+        }
     }
 
     @Test
