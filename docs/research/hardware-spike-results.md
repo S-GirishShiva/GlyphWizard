@@ -135,6 +135,9 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
   - **Back face-up:** playing again (user).
   - The per-frame `mPocketMode` / `mScreenUpward` flags stayed `false` throughout; the face-down suppression shows up as a gap in driver frames, not in those flags.
 
+- **AOD Glyph Toy:** shows while our app has released the matrix (`STOP`); when we play, ours replaces it. This matches the README priority chart (third-party app usage above AOD toys). [measured 2026-10-13]
+- **Nothing's glyph notification setting:** Settings → Glyph Interface → Essential notifications. **Not per app** (user). [measured 2026-10-13]
+
 ## Step 8: Kill and process
 
 ## Step 9: Restricted settings via Obtainium
