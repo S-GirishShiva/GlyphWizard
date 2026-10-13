@@ -84,6 +84,19 @@ Vendor Glyph properties (`adb shell getprop | grep -i glyph`) [measured 2026-10-
 
 ## Step 5: Flash, rise time, glow, pitch
 
+Second phone: 120 fps slow motion (no 240 fps available), photos; analysis with ffmpeg `signalstats` (per-frame mean luma) and ImageMagick. [measured 2026-10-13]
+
+- **Flash renders as clean on/off cycles** (`flash` at 60 fps render):
+  - 10 Hz: two clips measure 10.05 and 10.23 Hz; steady 5–6 frames on, 6–8 off at 120 fps.
+  - 15 Hz: steady 4 frames on, 4 off (the clip's tail includes the switch to the next pattern, so only its flashing part counts).
+  - Input for D37: the matrix reproduces 10–15 Hz flashing faithfully; nothing in the hardware softens it.
+- **Rise and fall time ≤ 8 ms** (camera-limited): each edge shows at most one in-between frame, which straddled the switch.
+- **No flicker visible at 120 fps:** luma steady while on (26.0, 26.0, 25.9). PWM above 60 Hz would be invisible to this camera, so this is not a proof of no PWM.
+- **Glow:** a single LED at 255 shows a point with slight camera bloom and **no visible spill into neighbouring LEDs** (photo and the user's eye).
+- **Pitch ≈ 1.7 mm, matrix width ≈ 22 mm (13 LEDs edge to edge), ±10%:** ₹10 bimetallic coin (27 mm) = 174 px, so 0.155 mm/px; LED gaps repeat every ~11.2 px. The coin lay on another phone beside the matrix, so height and angle differ slightly. LED size isn't resolvable (the photo is overexposed).
+- **Preview look:** the matrix sits under a round glass window; in room light the unlit LED lattice is visible.
+- **Not measured:** absolute luminance (no calibrated meter; left open by user decision, D37 stays conservative).
+
 ## Step 6: Auto-timeout
 
 ## Step 7: Priority and states
