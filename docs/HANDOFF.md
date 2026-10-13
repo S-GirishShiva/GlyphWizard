@@ -3,12 +3,12 @@
 **Updated:** 2026-10-12 · **Branch:** `design/v1-spec` (pushed) · **Last commit:** see `git log -1`
 
 ## Where we are
-- Design is done and the spec is approved.
-- **The M0 plan is final and approved (rev 4, 2026-10-12):** `docs/superpowers/plans/2026-10-12-m0-foundations-spike.md`. Reviews r1–r3 sit beside it. Rev 4 is the last revision; later findings are resolved as `[verify]` items during execution.
-- **Now:** executing M0 **inline** (superpowers:executing-plans), starting at Task 1 (four blocking questions to the user). Check the task checkboxes and `git log` for progress.
-- **Work split:** dev in the main session; reviews, QA and research in subagents.
-- **Java:** JDK 25 daemon and toolchain; Android target 25 (gated, fallback 21); `:core`/`:agent` `-Xjdk-release=17` (to be logged as D5x in Task 2).
-- After M0: the D46 architecture deep-dive (it also covers the convention-plugin question), then the M1 plan.
+- Branch `m0-foundations`. M0 plan rev 4 executing inline. **Tasks 1–5 done** (see `git log`); **Task 6 (hardware measurements) in progress.**
+- Ledger with every ruling: `.superpowers/sdd/2026-10-12-m0-foundations-spike/progress.md` (git-ignored; git log is the fallback).
+- Task 6 results so far: `docs/research/hardware-spike-results.md`. Steps 1 (layout: both work, no transform), 2 (values to 2047 pass through; visible effect unchecked), 3 (perceived curve steep to ~95; min visible level 17) and 4 (delivery ≤ 90 fps exact, ~115 max) done. **Next: Step 5** (flash, glow, pitch; needs 120 fps slow-mo video and a photo with a coin), then Steps 6–9 (auto-timeout, priority/states, kill/process, Obtainium; **ask before pushing any tag**).
+- Key facts: `NothingKey=test` is required (fixed); the charging animation overrides the app matrix (turn it off while measuring); `NtGlyphServiceImpl` logs are shared by all glyph clients.
+- Photos: `manual-test-pics/` (move the relevant ones into `docs/research/spike-photos/` as small JPEGs).
+- Work split: dev inline; research/review/QA in subagents. Stop and ask on any blocker.
 
 ## Read these first (in order)
 0. `CLAUDE.md` (auto-loaded) and `docs/engineering/code-guidelines.md`
