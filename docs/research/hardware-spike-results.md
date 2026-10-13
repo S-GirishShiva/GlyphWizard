@@ -127,7 +127,13 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
 - **Implications for M3 (design inputs, not decisions):**
   - Nothing's system glyphs outrank third-party apps cleanly (separate light, exclusive while it plays).
   - **Third-party apps are not arbitrated against each other**: two apps writing light 123 overwrite each other frame by frame. GlyphWizard should avoid streaming when nothing changes, and document coexistence with other Glyph apps (e.g. Glyph Museum).
-- **Settings path, locked/face-down/pocketed, AOD toy:** below.
+- **States (lock → face-down with a WhatsApp message → pocket → face-up):**
+  - **Locked, face-up:** our matrix keeps playing; at screen-off the user saw it go off and on (consistent with the system re-applying the frame, Step 6).
+  - **Face-down:** when the orientation sensor `type 65538` reported `1.0`, our frames stopped reaching the LED driver for **30.0 s** and resumed on their own when it returned to `0.0`. The app matrix is suppressed face-down (consistent with Nothing's Flip to Glyph). Sensor value meanings (0 up, 1 down, 2 ?) are inferred from the sequence [U].
+  - Face-down notification: Nothing's system glyph (light 108) played; Glyph Museum again interleaved on light 123 once face-up.
+  - **Pocket:** no distinct signal in the log (`mPocketMode` stayed false in every frame) [U: not separately confirmed].
+  - **Back face-up:** playing again (user).
+  - The per-frame `mPocketMode` / `mScreenUpward` flags stayed `false` throughout; the face-down suppression shows up as a gap in driver frames, not in those flags.
 
 ## Step 8: Kill and process
 
