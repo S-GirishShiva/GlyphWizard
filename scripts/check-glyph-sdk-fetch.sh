@@ -11,7 +11,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 home=build/sdk-fetch-test/gradle-home
 fresh_gradle_home "$home"
-gw() { ./gradlew --gradle-user-home "$home" --no-configuration-cache "$@"; }
+gw() { ./gradlew --gradle-user-home "$home" --no-daemon --no-configuration-cache "$@"; }
 sdk_cached() {
   find "$home/caches" \( -path '*com.nothing*' -o -name '*glyph-matrix*' \) -print > "$home/sdk-files.txt"
   [ -s "$home/sdk-files.txt" ]
