@@ -37,11 +37,12 @@ class MatrixFrameEncoder(
     companion object {
         private const val MAX_INPUT = 255
 
-        /**
-         * Provisional until the M0 hardware spike: the SDK sizes this device's matrix 13 × 13
-         * (`Glyph.DEVICE_25111p_MATRIX_LENGTH`) and caps values at 255 (its README).
-         */
+        // the LED driver is 12-bit: values pass through unchanged and keep getting brighter up to 4095, despite the
+        // SDK README's "capped at 255" (M0 hardware spike, D56)
+        private const val PHONE_4A_PRO_MAX = 4095
+
+        /** Measured on the device (hardware-spike-results.md): 13 × 13 grid frame, full 12-bit LED range. */
         fun forPhone4aPro(): MatrixFrameEncoder =
-            MatrixFrameEncoder(DeviceProfile.Phone4aPro, Layout.FullSquare, MAX_INPUT)
+            MatrixFrameEncoder(DeviceProfile.Phone4aPro, Layout.FullSquare, PHONE_4A_PRO_MAX)
     }
 }

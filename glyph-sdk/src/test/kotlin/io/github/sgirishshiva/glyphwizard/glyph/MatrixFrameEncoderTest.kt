@@ -71,10 +71,10 @@ class MatrixFrameEncoderTest {
     }
 
     @Test
-    fun phone4aProDefaultsAreTheProvisionalOnes() {
+    fun phone4aProDefaultsAreTheMeasuredOnes() {
         val encoder = MatrixFrameEncoder.forPhone4aPro()
         assertEquals(DeviceProfile.Phone4aPro, encoder.profile)
         assertEquals(Layout.FullSquare, encoder.layout)
-        assertEquals(255, encoder.maxValue)
+        assertEquals(4095, encoder.maxValue)
     }
 }
