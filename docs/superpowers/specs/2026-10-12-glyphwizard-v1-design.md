@@ -96,7 +96,7 @@ On a Nothing Phone (4a) Pro (Android 16):
 | API keys | Android Keystore (AES-GCM); excluded from backup |
 | SDK levels | minSdk 35, targetSdk 36, compileSdk 37 |
 | Build | Gradle KTS + version catalog; JDK 25 daemon/toolchain, `:core`/`:agent` API-capped at Java 17 for ART (D54) |
-| Tests | JUnit 5 + kotlin.test + golden text-grid files on the JVM; Robolectric + Compose UI tests in `:app`; Roborazzi screenshots; fakes over mocks |
+| Tests | JUnit 6 (Jupiter) + kotlin.test on JVM modules, plain JUnit 4 + Robolectric on Android modules (D49) + golden text-grid files; Compose UI tests in `:app`; Roborazzi screenshots; fakes over mocks |
 | CI | GitHub Actions; signed tag → GitHub Release |
 | Lint | ktlint + Android Lint + compose-rules + custom design-system checks (R1–R14) |
 | Licence | GPL-3.0-or-later + an additional permission for the Nothing SDK, plus a NOTICE (decided in M0) |

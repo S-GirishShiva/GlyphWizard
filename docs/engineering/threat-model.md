@@ -18,6 +18,7 @@
 |---|---|---|---|
 | Gradle plugins and libraries | compromised mirror or upstream ships malicious code | dependency verification: SHA-256 for every artifact (`gradle/verification-metadata.xml`, generated from an empty Gradle home); version catalog pins; ≥ 14-day pin rule, also enforced by Renovate's `minimumReleaseAge` | M0 ✔ |
 | The Nothing SDK fetch | the AAR changes upstream or is tampered with | resolved by Gradle from a commit-pinned URL (`exclusiveContent`, one module only); SHA-256 independently checked and pinned in the verification metadata; `check-glyph-sdk-fetch.sh` proves a tampered hash, an unreachable host and offline mode all fail | M0 ✔ |
+| JDK provisioning (foojay toolchain resolver) | a machine without JDK 25 downloads one through foojay's API, **outside** Gradle dependency verification | CI never takes this path (setup-java installs Temurin 25) | **open** (contributor machines) |
 | Robolectric's runtime download of `android-all-instrumented` jars | fetched by Robolectric itself at test time, **outside** Gradle dependency verification | none yet. Test-only (never reaches the APK), but a compromised jar runs on CI and developer machines. Candidate fix: pre-resolve the jars through a Gradle configuration (so they are verified) and set `robolectric.offline=true` | **open, M1** |
 | CI (GitHub Actions) | a compromised action or a leaked token | actions pinned by full commit SHA; `permissions: contents: read`; `persist-credentials: false`; no secrets in M0; Renovate PRs for action updates; open-source cache provider (`basic`) | M0 ✔ |
 | Release artifacts | an SDK-containing APK published before Nothing's permission (D26) | CI attaches no artifacts; `check-sdkfree-apk.sh` proves the sdkFree APK has no SDK classes, ENABLE permission or NothingKey (with a positive control on the full APK) | M0 ✔; release signing M8 |
@@ -36,4 +37,5 @@
 2. **A crash or force-stop leaves the matrix lit** until the next start of our app or another app's frame. Mitigation lands with the M1/M3 playback code.
 3. **Third-party Glyph apps are not arbitrated.** Accepted; documented to users in M3.
 4. **Brightness above 255 relies on undocumented behaviour** (D56). Firmware updates could change it; consider a runtime self-test (hardware-spike-results.md).
-5. **Pre-stable detekt (D47)** could silently stop enforcing; mitigated by the CI canary and the SARIF-based crash/findings split.
+5. **JDK downloads through foojay** on machines without JDK 25 are not covered by dependency verification.
+6. **Pre-stable detekt (D47)** could silently stop enforcing; mitigated by the CI canary and the SARIF-based crash/findings split.

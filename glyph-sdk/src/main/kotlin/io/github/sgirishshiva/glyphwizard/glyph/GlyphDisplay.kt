@@ -33,8 +33,14 @@ interface GlyphDisplay {
      */
     fun show(brightness: IntArray): GlyphResult<Unit>
 
-    /** Nothing's app-matrix auto-clear; its exact behaviour is measured in M0 (hardware-spike-results.md). */
+    /**
+     * Nothing's app-matrix auto-clear. M0 measured no effect either way: a held frame stays lit until [release]
+     * (hardware-spike-results.md, step 6).
+     */
     fun setAutoTimeout(enabled: Boolean): GlyphResult<Unit>
 
+    /**
+     * Ends the session; `connect()` may follow. Don't call it while a [show] is in flight: wait for that frame first.
+     */
     fun release()
 }

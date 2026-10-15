@@ -20,7 +20,7 @@ class MatrixFrameEncoder(
 
     fun encode(brightness: IntArray): IntArray {
         require(brightness.size == profile.ledCount) { "expected ${profile.ledCount} values, got ${brightness.size}" }
-        val scaled = IntArray(brightness.size) { brightness[it].coerceIn(0, MAX_INPUT) * maxValue / MAX_INPUT }
+        val scaled = IntArray(brightness.size) { toDeviceValue(brightness[it]) }
         return when (layout) {
             Layout.LedsOnly -> {
                 scaled
@@ -33,6 +33,10 @@ class MatrixFrameEncoder(
             }
         }
     }
+
+    // rounds up: the 4a Pro driver floors value × 255 / 4095 to its PWM step, so rounding down would land every stored
+    // level just below its step (stored 1 would stay dark); rounding up puts stored s exactly on step s
+    private fun toDeviceValue(stored: Int): Int = (stored.coerceIn(0, MAX_INPUT) * maxValue + MAX_INPUT - 1) / MAX_INPUT
 
     companion object {
         private const val MAX_INPUT = 255
