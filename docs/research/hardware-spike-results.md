@@ -176,7 +176,14 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
 
 ## Step 9: Restricted settings via Obtainium
 
-**Deferred** (user decision, 2026-10-13): a GitHub prerelease would publish M0's unreviewed history from the public repo. Run it after Task 8's `/code-review`, just before merging, with the sdkFree spike APK only. Until then the onboarding restricted-settings walkthrough (atlas) remains unverified. Known so far: an adb install shows no restricted-setting block (Step 8).
+Prerelease `spike-m0-test` with only the sdkFree spike APK; installed through Obtainium 1.6.17 (system installer mode) after the USB install was removed. [measured 2026-10-15/17]
+
+- **No restricted-settings block.** Settings → Notifications → Notification read, reply and control → GlyphWizard spike went straight to the normal consent dialog ("Read your notifications / Reply to messages / Change settings"), and access was granted. Screenshots: `spike-photos/step9-permission/`. Research with sources: `2026-10-17-restricted-settings-research.md`.
+- **Why (device evidence):** `dumpsys package` shows `installerPackageName=dev.imranr.obtainium` and `packageSource=2` (`PACKAGE_SOURCE_STORE`). `ACCESS_RESTRICTED_SETTINGS` stayed `default`: the system checked it (rejections logged at the grant, 2026-10-15 19:46, and at App permissions, 2026-10-17 14:26) but didn't guard the app.
+- **Control on the same phone:** Obtainium itself, installed by Google's package installer from a downloaded file, has `packageSource=3` (`LOCAL_FILE`) and `ACCESS_RESTRICTED_SETTINGS: deny`, so restricted settings (Android 15+ Enhanced Confirmation Mode) are active on this build. `/system/etc/sysconfig/enhanced-confirmation.xml` is identical to AOSP android16-release (no trusted-installer list).
+- **Rule** (research subagent, AOSP android13–16-release + Obtainium source): the guard applies to installs whose `packageSource` is `LOCAL_FILE` (3) or `DOWNLOADED_FILE` (4), which the system package installer stamps when an APK is opened from a browser or file manager. With an empty trusted-installer list, store-labelled (Obtainium: `setPackageSource(PACKAGE_SOURCE_STORE)` in its installer plugin), unspecified and adb installs are not guarded. Developer options and USB debugging play no part. Notification access is among the guarded settings.
+- **Unlock path, from AOSP Settings and Google's help page, not walked through on this device:** App info → ⋮ → "Allow restricted settings", which needs the lock screen and appears only after the user has tried the restricted toggle and dismissed the "Restricted setting" dialog.
+- **Design input for M3 onboarding (not a decision):** Obtainium users (our distribution channel, D32) won't see the block; users who download the APK in a browser will. The walkthrough stays, shown only when access is actually restricted, and its Nothing OS path is still to be verified on a source-3 install.
 
 ## Decisions affected
 
@@ -188,4 +195,4 @@ Playback: our app streaming all LEDs at 128, 30 fps. Device log buffer raised to
 | D33 (agent turn as shortService) | **Confirmed:** hard limit 3 min 0.004 s from `startForeground`; clean `onTimeout`; no ANR when stopping |
 | D37 (flash safety) | Flash renders faithfully at 10–15 Hz with ≤ 8 ms edges; absolute luminance unmeasured, so it **stays conservative** (user: left open) |
 
-**Open M0 items:** Step 9 (restricted settings via Obtainium; after review, before merge); absolute luminance (no equipment; left open).
+**Open items:** absolute luminance (no equipment; left open); the restricted-settings unlock path on Nothing OS for a browser/file-manager install (Step 9); minimum visible level with the round-up encoder (expected 1; user deferred, 2026-10-15).
