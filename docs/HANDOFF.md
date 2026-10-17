@@ -1,26 +1,29 @@
 # Session Handoff
 
-**Updated:** 2026-10-12 · **Branch:** `design/v1-spec` (pushed) · **Last commit:** see `git log -1`
+**Updated:** 2026-10-17 · **Branch:** `master` (M0 merged: PR #1, #2) · **Last commit:** see `git log -1`
 
 ## Where we are
-- Branch `m0-foundations`. M0 plan rev 4 executing inline. **Tasks 1–6 done** (Task 6 except Step 9, deferred by user to after Task 8's review and before the merge; absolute luminance left open). See `git log` and `docs/research/hardware-spike-results.md`.
-- Ledger with every ruling: `.superpowers/sdd/2026-10-12-m0-foundations-spike/progress.md` (git-ignored; git log is the fallback).
-- **Next: Task 7** (CI, supply chain, threat model). Ledger notes for it:
-  - the APK script must assert NothingKey is in full and absent from sdkFree;
-  - add `:app:detektSdkFreeRelease` and `:spike:detektFullDebug` to the detekt line;
-  - build-logic is gone (no validatePlugins; `scripts:` uses `:app:assembleFullDebug`);
-  - verification metadata must be generated from a FRESH Gradle home;
-  - CI JDK 25;
-  - threat model: force-stop leaves the matrix lit; third-party apps unarbitrated; Robolectric downloads outside verification.
-- Then **Task 8** (exit review via a subagent code review; Step 9 Obtainium test before merge; ask before any push).
-- D56: encoder max 4095 (user decision). **Brightness model validated** (results doc, "Brightness model and calibration"): AW20144 driver gives 256 linear PWM steps, clamped at 4095. **Recommendation for the D46 deep-dive / M1:** CIE L* table in `:core`.
-- Spike state on the phone: pattern service stopped; notification access granted to the spike listener (revoke if wanted).
-- Key facts: `NothingKey=test` is required (fixed); the charging animation overrides the app matrix (turn it off while measuring); `NtGlyphServiceImpl` logs are shared by all glyph clients.
-- Photos: `manual-test-pics/` (move the relevant ones into `docs/research/spike-photos/` as small JPEGs).
-- Work split: dev inline; research/review/QA in subagents. Stop and ask on any blocker.
+- **M0 is done.** Plan rev 4 Tasks 1–8 executed; ledger: `.superpowers/sdd/2026-10-12-m0-foundations-spike/progress.md` (git-ignored; git log is the fallback).
+  - CI green on GitHub (checks, detekt + canary, full-build); supply chain, threat model and licence audit in `docs/engineering/`.
+  - Exit review (subagent) fixed: vacuous detekt canary, brightness rounding onto the driver's PWM steps, `NothingGlyphDisplay` session ownership, guard script. Deferred items with reasons are in the ledger (Task 8 Step 2).
+  - Hardware facts: `docs/research/hardware-spike-results.md` (Steps 1–9).
+- **Next: the D46 internal architecture deep-dive** (research → draft → adversarial review → user sign-off), **then the M1 (`:core`) plan.** Agenda items already recorded:
+  - convention plugin for the ~4 lines of quality wiring repeated per module;
+  - the shared result type (`GlyphResult` is local to `:glyph-sdk`);
+  - `DeviceProfile`/`TextGrid` are provisional (add validation);
+  - brightness model: CIE L* table in `:core` (results doc, "Brightness model and calibration");
+  - playback must clear the matrix itself (force-stop leaves it lit; auto-timeout does nothing) and handle the dropped first frame after `register()`;
+  - detekt custom rule for `else` on sealed `when` (#25) and multi-line mutable `object`s.
+
+## Open items
+- **Prerelease cleanup:** delete the GitHub prerelease and tag `spike-m0-test` (confirm via the API afterwards).
+- **On device, later:** re-measure the minimum visible level with the round-up encoder (expected 1); walk the restricted-settings unlock path on a browser/file-manager install (`adb install --package-source 3` may reproduce it [U]).
+- **M2 notes:** in-app open-source notices (Apache §4 texts); backup rules replace the template files; debug mirror throttling/PNG dumps; placeholder text sits under the status bar (insets).
+- **M3 notes:** onboarding shows the restricted-settings walkthrough only when access is actually restricted (Obtainium installs aren't); third-party glyph apps are not arbitrated.
+- **Phone state:** spike installed via Obtainium with notification access granted (revoke or uninstall if wanted).
 
 ## Read these first
-Follow the **Startup reading** checklist in `CLAUDE.md` (in full, in order, before acting). It includes `modern-kotlin-patterns.md` and `decisions.md` (D1–D56), which an earlier session skipped.
+Follow the **Startup reading** checklist in `CLAUDE.md` (in full, in order, before acting).
 
 ## Working agreements (also in Claude memory)
 - **No assumptions:** cite evidence or tag [P]/[HW]/[EV]. Research → plan → adversarial review → refine.
@@ -28,16 +31,15 @@ Follow the **Startup reading** checklist in `CLAUDE.md` (in full, in order, befo
 - **The user is new to Android** (experienced in Go/Python). Every new concept gets a learning aside.
 - **Challenge the user's views** when evidence supports it.
 - **Every visual detail is signed off by the user.** Re-read the design log before any mockup, and self-screenshot.
-- **Commits:** `<slug> [Siddanth, Claude] - message`, blank line, details, then the Co-Authored-By trailer. Branch per milestone.
+- **Commits:** `<slug> [Siddanth, Claude] - message`, blank line, details, then the Co-Authored-By trailer. Branch per milestone; push only when asked.
 
 ## Parallel tasks (user)
 - Send the Nothing SDK permission email (`docs/outreach/2026-10-11-nothing-sdk-permission-email.md`).
 - Ask OpenCode about Go keys in non-coding apps (draft not written yet).
-- Decide in M0: the permanent application ID, and confirm GPL-3.0+ with the SDK exception.
 
 ## Environment notes
-- Phone (4a) Pro on USB, Android 16 / API 36. `android` CLI, adb, scrcpy and mobile-mcp are installed.
-- Non-interactive shells don't load `~/.zshrc`: use `$HOME/Android/Sdk/platform-tools/adb` if adb versions mismatch.
+- Phone (4a) Pro on USB, Android 16 / API 36. `android` CLI, adb, scrcpy, mobile-mcp, shellcheck and actionlint are installed.
+- Non-interactive shells don't load `~/.zshrc`: use `$HOME/Android/Sdk/platform-tools/adb`. If adb sees no device, check USB debugging is on (the phone can fall back to MTP only).
 - Visual companion: superpowers brainstorming `scripts/start-server.sh --project-dir <repo>`. Mockups live in `.superpowers/` (gitignored).
 
 ## Architecture
